@@ -1,0 +1,1466 @@
+---
+title: "Kwaliteitsrapport soortenmeetnetten 2016"
+author: "Toon Westra, Geert De Knijf, Luc De Bruyn, Dirk Maes, Thierry Onkelinx, Frederic Piesschaert, Marc Pollet en Paul Quataert"
+output: 
+  INBOmd::inbo_rapport_2015:
+    subtitle: "Meetnetten Natura 2000: permanente kwaliteitszorg (INBOPRJ-9683)"
+    reportnr: "Intern Rapport"
+    lof: FALSE
+    lot: FALSE
+
+
+---
+
+
+```{r markdownsetup, cache=FALSE, include=FALSE, echo=FALSE, cache =FALSE}
+#initialiseer markdown
+library(knitr)
+library(pander)
+opts_chunk$set(fig.width=4, fig.height = 4, fig.path = 'figures/')
+opts_chunk$set(echo = FALSE)
+opts_chunk$set(cache = TRUE)
+panderOptions_default <- panderOptions()
+
+```
+
+
+```{r librariesEnFuncties, message= FALSE, warning= FALSE, echo = FALSE, cache=FALSE}
+
+library(tidyr)
+library(plyr)
+library(dplyr)
+library(tibble)
+library(ggplot2)
+library(INBOtheme)
+library(gridExtra)
+library(kableExtra)
+
+figuur_aantallen <- function(data, type = "ToonNulwaarnemingen", ncol = 2, legend_position = "right"){
+  
+   aantallen <- data
+   aantallen$Nulwaarneming <- factor(ifelse(aantallen$aantal==0, "Ja", "Nee" ),levels = c("Nee", "Ja"))
+
+   if(type == "ToonNulwaarnemingen"){
+     
+     ggplot(aantallen, aes (x =aantal, fill = Nulwaarneming)) + geom_histogram(data = filter(aantallen, Maximum < 20),origin =0, binwidth = 1,  colour="black") +  geom_histogram(data = filter(aantallen,Maximum >= 20 & Maximum < 100),origin =0, binwidth = 5, colour="black") + geom_histogram(data = filter(aantallen,Maximum >= 100 & Maximum < 200),origin =0, binwidth = 10,  colour="black") + geom_histogram(data = filter(aantallen,Maximum >= 200 ),origin =0, binwidth = 25,  colour="black") + geom_vline(aes(xintercept = Gemiddelde),colour = inbo.steun.blauw, size = 1) +  facet_wrap(~ soort_stadium, scale = "free", ncol = ncol) + xlim(0,NA) + labs(x= "Getelde aantallen", y = "Aantal bezoeken") + theme(legend.position= legend_position)
+     
+   } else if (type == "ToonBezoekStatus"){
+     
+     ggplot(aantallen, aes (x =aantal, fill = bezoek_status )) + geom_histogram(data = filter(aantallen, Maximum < 20), origin =0,binwidth = 1,  colour="black") +  geom_histogram(data = filter(aantallen,Maximum >= 20 & Maximum < 100), origin =0,binwidth = 5, colour="black") + geom_histogram(data = filter(aantallen,Maximum >= 100 & Maximum < 200), origin =0,binwidth = 10,  colour="black") + geom_histogram(data = filter(aantallen,Maximum >= 200 ), origin =0, binwidth = 25,  colour="black") + geom_vline(aes(xintercept = Gemiddelde),colour = inbo.steun.blauw, size = 1) + facet_wrap(~ soort_stadium, scale = "free", , ncol = ncol) + xlim(0,NA) + labs(x= "Getelde aantallen", y = "Aantal bezoeken") + theme(legend.position= legend_position)
+     
+   } else {
+     
+     ggplot(aantallen, aes (x =aantal )) + geom_histogram(data = filter(aantallen, Maximum < 20), origin =0,binwidth = 1,  colour="black") +  geom_histogram(data = filter(aantallen,Maximum >= 20 & Maximum < 100), origin =0,binwidth = 5, colour="black") + geom_histogram(data = filter(aantallen,Maximum >= 100 & Maximum < 200), origin =0,binwidth = 10,  colour="black") + geom_histogram(data = filter(aantallen,Maximum >= 200 ), origin =0, binwidth = 25,  colour="black") + geom_vline(aes(xintercept = Gemiddelde),colour = inbo.steun.blauw, size = 1) + facet_wrap(~ soort_stadium, scale = "free", , ncol = ncol) + xlim(0,NA) + labs(x= "Getelde aantallen", y = "Aantal bezoeken") + theme(legend.position= legend_position)
+     
+   }
+} 
+
+
+```
+
+
+```{r inlezenGegevens, message= FALSE, warning= FALSE, cache=FALSE}
+
+versie <- "Versie20170112"
+
+bezoeken <- read.csv2(paste("Data/",versie,"/Bezoeken.csv",sep=""))
+covariabelen <- read.csv2(paste("Data/",versie,"/Covariabelen.csv",sep=""))
+aantallen <- read.csv2(paste("Data/",versie,"/Aantallen.csv",sep=""))
+werkpaketten <- read.csv2(paste("Data/",versie,"/Werkpakketten.csv",sep=""))
+
+bezoeken$datum <- as.Date(bezoeken$start_date)
+bezoeken$notes <- as.character(bezoeken$notes)
+bezoeken$taak <- as.character(bezoeken$taak)
+bezoeken$taak <- ifelse(bezoeken$taak == "", "Extra telling", bezoeken$taak)
+
+werkpaketten <- rename(werkpaketten, meetnet = project)
+
+soortgroepen <- unique(select(werkpaketten,soortgroep,meetnet))
+
+aantallen <- rename(aantallen, meetnet = project)
+aantallen <- inner_join(soortgroepen,aantallen) 
+
+aantallen$datum <- as.Date(aantallen$datumbezoek) 
+aantallen$taak <- as.character(aantallen$taak)
+aantallen$taak <- ifelse(aantallen$taak == "", "Extra telling",aantallen$taak )
+aantallen$typeBezoek <- ifelse(aantallen$taak == "Extra telling", "Extra telling","taak" )
+
+covariabelen$bezoekvariabele <- as.character(covariabelen$bezoekvariabele)
+covariabelen$waarde <- as.character(covariabelen$waarde)
+covariabelen$eenheid <- as.character(covariabelen$eenheid)
+
+telperiodes <- unique(select(werkpaketten,soortgroep, meetnet, protocol, taak, start_taak, einde_taak))
+
+meetnetKarakt <- read.csv2("Data/meetnetkarakt_2016.csv")
+meetnetKarakt$Begin_telperiode <-as.Date(meetnetKarakt$Begin_telperiode, format = "%d/%m/%Y")
+meetnetKarakt$Einde_telperiode <-as.Date(meetnetKarakt$Einde_telperiode, format = "%d/%m/%Y")
+meetnetKarakt$Begin_telperiode <- format(as.Date(meetnetKarakt$Begin_telperiode), format = "%d/%m")
+meetnetKarakt$Einde_telperiode <- format(as.Date(meetnetKarakt$Einde_telperiode), format = "%d/%m")
+
+data_das <- read.csv2("Data/Das/meetnet_das.csv")
+data_hamster <- read.csv2("Data/hamster/data_hamster_2016.csv")
+data_hamster$datum <- as.Date(data_hamster$Datum, format =  "%d/%m/%Y")
+
+```
+
+```{r overzichtTellingen, message= FALSE, warning= FALSE}
+
+overzicht_taken_uitgevoerd <- summarise(group_by(bezoeken, groep, meetnet, locatie, bezoek_status),
+                                AantalTaken = n_distinct(taak) - (sum(taak == "Extra telling") > 0) ,
+                                AantalExtraBezoeken = sum(taak == "Extra telling")
+                                )
+
+overzicht_taken_uitgevoerd <- ungroup(overzicht_taken_uitgevoerd)
+
+overzicht_taken_uitgevoerd_wide1 <- spread(select(overzicht_taken_uitgevoerd, -AantalExtraBezoeken), key = bezoek_status, value = AantalTaken, fill = 0 )
+
+overzicht_taken_uitgevoerd_wide1  <- rename(overzicht_taken_uitgevoerd_wide1, AantalTaken_CP = `Conform protocol`, AantalTaken_NCP = `Niet volledig conform protocol`, AantalTaken_GVM = `Geen veldwerk mogelijk`, soortgroep = groep)
+
+overzicht_taken_uitgevoerd_wide2 <- spread(select(overzicht_taken_uitgevoerd, -AantalTaken), key = bezoek_status, value = AantalExtraBezoeken, fill = 0 )
+
+overzicht_taken_uitgevoerd_wide2  <- rename(overzicht_taken_uitgevoerd_wide2, AantalExtraTaken_CP = `Conform protocol`, AantalExtraTaken_NCP = `Niet volledig conform protocol`, AantalExtraTaken_GVM = `Geen veldwerk mogelijk`, soortgroep = groep)
+
+overzicht_taken_uitgevoerd_wide <- full_join(overzicht_taken_uitgevoerd_wide1,overzicht_taken_uitgevoerd_wide2)
+
+### alle locaties
+werkpakketten2016 <- filter(werkpaketten, werkpakket %in% c("veldwerk 2016", "Veldwerk 2016"))
+
+werkpakketten2016_locaties <- unique(select(werkpakketten2016, soortgroep, meetnet, locatie))
+
+meetnetten2016_nLocaties <- summarise(group_by(werkpakketten2016_locaties,soortgroep, meetnet),
+                                      nLocaties = n_distinct(locatie))
+
+overzicht_taken <- full_join(overzicht_taken_uitgevoerd_wide, werkpakketten2016_locaties, by = c("soortgroep","meetnet","locatie"))
+
+overzicht_taken[is.na(overzicht_taken)] <- 0
+
+### taken niet uitvoerbaar: een aantal taken waren niet uitvoorbaar door overmacht
+
+takenNU <- read.csv2(paste("Data/",versie,"/TakenNietUitvoerbaar.csv",sep=""))
+takenNU$Reden_NU <- as.character(takenNU$Reden_NU)
+
+overzicht_taken <-full_join(overzicht_taken, takenNU, by = c("meetnet","locatie"))
+overzicht_taken$AantalTaken_NU <- ifelse(is.na(overzicht_taken$AantalTaken_NU),0, overzicht_taken$AantalTaken_NU)
+overzicht_taken$Reden_NU <- ifelse(is.na(overzicht_taken$Reden_NU),"", overzicht_taken$Reden_NU)
+
+jaardoelen <- read.csv2("Data/jaardoelen2016.csv")
+
+overzicht_taken <- full_join(overzicht_taken, jaardoelen)
+overzicht_taken[overzicht_taken$soortgroep == "planten",]$MeetfrequentieDoel <- 1
+
+overzicht_taken$VoldoendeGeteld <- ifelse((overzicht_taken$AantalTaken_CP + overzicht_taken$AantalTaken_NU) >= overzicht_taken$MeetfrequentieDoel, 1 , 0)
+
+overzicht_taken$Geteld <- ifelse((overzicht_taken$AantalTaken_CP + overzicht_taken$AantalTaken_NU + overzicht_taken$AantalExtraTaken_CP) > 0, 1 , 0)
+
+overzicht_taken <- arrange(overzicht_taken, soortgroep, meetnet, locatie)
+
+## aanpassing
+overzicht_taken[overzicht_taken$locatie == "Parikebos",]$VoldoendeGeteld <- 1
+
+
+overzicht_meetnetten <- summarise(group_by(overzicht_taken, soortgroep, meetnet),
+                                  AantalLocatiesVoldoendeGeteld = sum(VoldoendeGeteld),
+                                  AantalLocatiesBezocht = sum (Geteld),
+                                  AantalLocatiesMeetnet = n_distinct(locatie),
+                                  AantalTaken_CP = sum(AantalTaken_CP) ,
+                                  AantalTaken_NU = sum (AantalTaken_NU),
+                                  AantalExtra_CP = sum(AantalExtraTaken_CP),
+                                  Jaardoel = unique(Jaardoel),
+                                  Eenheid_jaardoel = unique (Eenheid))
+
+overzicht_das <- data.frame(meetnet = "Das",
+                            soortgroep = "zoogdieren",
+                            AantalLocatiesVoldoendeGeteld = length(unique(data_das$burchtID)),
+                                  AantalLocatiesBezocht = length(unique(data_das$burchtID)),
+                                  AantalLocatiesMeetnet = meetnetKarakt[meetnetKarakt$Meetnet == "Das",]$Meetnetlocaties,
+                                  AantalTaken_CP =  nrow(data_das) ,
+                                  AantalTaken_NU = 0,
+                                  AantalExtra_CP =0,
+                                  Jaardoel = meetnetKarakt[meetnetKarakt$Meetnet == "Das",]$Meetnetlocaties/ meetnetKarakt[meetnetKarakt$Meetnet == "Das",]$Meetcyclus,
+                                  Eenheid_jaardoel = "Locaties")
+                           
+overzicht_hamster <- data.frame(meetnet = "Hamster",
+                            soortgroep = "zoogdieren",
+                            AantalLocatiesVoldoendeGeteld = 1,
+                                  AantalLocatiesBezocht = 1,
+                                  AantalLocatiesMeetnet =1,
+                                  AantalTaken_CP =nrow(data_hamster) ,
+                                  AantalTaken_NU = 0,
+                                  AantalExtra_CP =0,
+                                  Jaardoel = 50,
+                                  Eenheid_jaardoel = "Hectare")
+
+overzicht_meetnetten <- rbind(ungroup(overzicht_meetnetten), overzicht_das, overzicht_hamster)
+
+
+overzicht_meetnetten$PercentageGehaald <- ifelse(overzicht_meetnetten$Eenheid_jaardoel == "Locaties", overzicht_meetnetten$AantalLocatiesVoldoendeGeteld/ overzicht_meetnetten$Jaardoel * 100, ifelse(overzicht_meetnetten$Eenheid_jaardoel == "Bezoeken", (overzicht_meetnetten$AantalTaken_CP + overzicht_meetnetten$AantalTaken_NU)/ overzicht_meetnetten$Jaardoel *100 ,NA))
+
+
+
+overzicht_soortgroepen <- summarise(group_by(overzicht_meetnetten, soortgroep),
+                                  AantalLocatiesVoldoendeGeteld = sum(AantalLocatiesVoldoendeGeteld),
+                                  AantalLocatiesMeetnet = sum(AantalLocatiesMeetnet),
+                                  AantalTaken_CP = sum(AantalTaken_CP),
+                                  AantalTaken_NU = sum (AantalTaken_NU),
+                                  AantalExtra_CP = sum(AantalExtra_CP))
+
+
+# write.csv2(overzicht_taken, "Output/OverzichtTaken2016_versie20161206.csv")
+# write.csv2(overzicht_meetnetten, "Output/OverzichtMeetnetten2016_versie20161206.csv")
+# write.csv2(overzicht_soortgroepen, "Output/OverzichtSoortgroepen2016_versie20161206.csv")
+
+#◘overzicht_meetnetten <- ungroup(overzicht_meetnetten)
+
+overzicht_meetnetten2 <- select(overzicht_meetnetten, soortgroep, meetnet)
+overzicht_meetnetten2$'Tellingen conform protocol' <- overzicht_meetnetten$AantalTaken_CP + overzicht_meetnetten$AantalExtra_CP
+overzicht_meetnetten2$'Telling niet mogelijk' <- overzicht_meetnetten$AantalTaken_NU
+overzicht_meetnetten2$'Bezochte locaties' <- overzicht_meetnetten$AantalLocatiesBezocht
+overzicht_meetnetten2$'Locaties voldoende geteld' <- overzicht_meetnetten$AantalLocatiesVoldoendeGeteld
+overzicht_meetnetten2$'Doel 2016' <- paste(overzicht_meetnetten$Jaardoel, overzicht_meetnetten$Eenheid_jaardoel, sep =" ")
+overzicht_meetnetten2 <- rename(overzicht_meetnetten2, Meetnet = meetnet)
+
+```
+
+
+```{r globaleVerkenning, message= FALSE, warning= FALSE, echo = FALSE}
+
+bezoeken_uitgevoerd <- filter(bezoeken, bezoek_status != "Geen veldwerk mogelijk")
+
+overzicht_soortengroepen <- summarise(group_by(bezoeken, groep),
+                                  Locaties = n_distinct(locatie),
+                                  Bezoeken = n())
+
+#sum(overzicht_soortengroepen$Locaties)               
+#sum(overzicht_soortengroepen$Bezoeken)
+
+
+overzicht_soortengroepen$groep <- as.character(overzicht_soortengroepen$groep)
+overzicht_soortengroepen$groep <- ifelse(overzicht_soortengroepen$groep == "overige", "sprinkhanen",overzicht_soortengroepen$groep )
+
+overzicht_soortengroepen_long <- gather(overzicht_soortengroepen, Locaties, Bezoeken, key = "type", value = "aantal")
+
+#ggplot(overzicht_soortengroepen_long, aes(x=groep, y = aantal, fill = type)) + geom_bar(stat = "identity", position = "dodge", colour = "black") + labs(x= "Soortengroep", y = "Aantal registraties", fill = "")
+
+aantallen_uitgevoerd <- filter(aantallen, bezoek_status != "Geen veldwerk mogelijk")
+
+overzicht_aantallen <- summarise(group_by(aantallen,  meetnet, locatie, protocol, bezoek_status, taak, levensstadium),
+                                 Totaal = sum(aantal,na.rm = TRUE))
+
+aantallen_aangepast <- aantallen
+aantallen_aangepast$aantal <- ifelse(aantallen_aangepast$activiteit == "copula", aantallen_aangepast$aantal*2, aantallen_aangepast$aantal )
+
+# aantallen per bezoek
+aantallen_bezoek <- summarise(group_by(aantallen, soortgroep, meetnet, locatie, taak,bezoek_status, datum, levensstadium),
+                                aantal = sum(aantal,na.rm=TRUE))
+
+overzicht_aantallen <- summarise(group_by(aantallen_bezoek,soortgroep, meetnet, levensstadium),
+                               Totaal = sum(aantal,na.rm = TRUE),
+                               Gemiddelde = mean(aantal, na.rm = TRUE),
+                               Maximum = max(aantal, na.rm =TRUE))
+
+overzicht_aantallen <- filter(overzicht_aantallen, Totaal != 0)
+overzicht_aantallen$levensstadium <- as.character(overzicht_aantallen$levensstadium)
+
+overzicht_aantallen_long <- gather(overzicht_aantallen, Totaal, Gemiddelde, Maximum, key = Variabele , value = Waarde)
+
+overzicht_aantallen_long$levensstadium <- factor(overzicht_aantallen_long$levensstadium)
+#overzicht_aantallen_long$levensstadium <- revalue(overzicht_aantallen_long$levensstadium, c(onbekend = "nesten", ei ="eitjes", larve = "larven", adult = "adulten", imago = "imago's"))
+
+#ggplot(filter(overzicht_aantallen_long,Variabele != "Totaal" & levensstadium != "imago (niet uitgekleurd)"), aes (x = Waarde, fill = Variabele)) + geom_point(size = 4) + facet_wrap(~ meetnet, scale = "free") + ylim(0,NA) + labs(x="", y= "Aantal", colour="") + scale_colour_discrete(labels=c("Gemiddeld getelde aantal per bezoek", "Maximum getelde aantal per bezoek"))
+
+aantallen_bezoek_relevant <- inner_join(overzicht_aantallen, aantallen_bezoek)
+aantallen_bezoek_relevant <- filter(aantallen_bezoek_relevant,levensstadium != "imago (niet uitgekleurd)")
+aantallen_bezoek_relevant$levensstadium <- revalue(aantallen_bezoek_relevant$levensstadium, c(onbekend = "nesten", ei ="eitjes", larve = "larven", adult = "adulten", imago = "imago's"))
+
+aantallen_bezoek_relevant$soort_stadium <- paste(aantallen_bezoek_relevant$meetnet,aantallen_bezoek_relevant$levensstadium,sep=" - ")
+
+#ggplot(aantallen_bezoek_relevant, aes (x =aantal, fill = bezoek_status)) + geom_histogram(data = filter(aantallen_bezoek_relevant, Maximum < 20), binwidth = 1,  colour="black") +  geom_histogram(data = filter(aantallen_bezoek_relevant,Maximum >= 20 & Maximum < 100), binwidth = 5, colour="black") + geom_histogram(data = filter(aantallen_bezoek_relevant,Maximum >= 100 & Maximum < 200), binwidth = 10,  colour="black") + geom_histogram(data = filter(aantallen_bezoek_relevant,Maximum >= 200 ), binwidth = 25,  colour="black") + geom_vline(aes(xintercept = Gemiddelde),colour = "blue", size = 1) + facet_wrap(~ soort_stadium, scale = "free") + xlim(0,NA) + labs(x= "Getelde aantallen", y = "Aantal bezoeken")
+
+
+
+```
+
+
+# Inleiding
+
+In 2016 zijn een reeks nieuwe meetnetten van start gegaan voor de monitoring van Vlaams en Europees prioritaire soorten. Via deze meetnetten worden gegevens ingezameld ter ondersteuning van het Vlaamse natuurbeleid en voor de rapportage in kader van de Habitatrichtlijn en de Vogelrichtlijn (De Knijf *et al.* 2014). De opgestarte meetnetten zijn terug te vinden in de overzichtstabel in \autoref{bijlage-overzicht-soorten}. Dit overzicht bevat ook de meetnetten die in de komende jaren van start gaan en de meetnetten die al meerdere jaren lopen.   
+
+In dit rapport focussen we ons op de meetnetten die in 2016 van start gingen. We maken een tussentijdse evaluatie van de kwaliteit van de ingezamelde gegevens en sturen bij waar nodig.  Meer concreet is het doel van dit rapport:
+
+* de verkenning van de in 2016 ingezamelde gegevens;
+
+* controle of de gegevens consistent zijn met het monitoringprotocol;
+
+* controle of de gegevens consistent zijn opgeslagen in de databank;
+
+* evaluatie van het veldwerk in 2016;
+
+* formulering van aanpassingen aan het monitoringprotocol en het invoerportaal.
+  
+We maken een evaluatie van de meetnetten per soortengroep waarbij volgende zaken aan bod komen:  
+
+* overzicht van de meetnetkarakteristieken en eventuele aanpassingen t.o.v. het monitoringprotocol;
+
+* overzicht van de uitgevoerde tellingen en evaluatie of de doelen werden gehaald;
+
+* verkenning van de ingevoerde gegevens: aantallen, covariabelen en eventuele verbanden tussen beiden;
+
+* aanpassingen aan het monitoringprotocol.
+
+
+# Libellen
+
+## Meetnetkarakteristieken
+
+\autoref{tab:meetnetLibellen1} en \autoref{tab:meetnetLibellen2} geven een overzicht van de karakteristieken van de libellenmeetnetten die in 2016 van start gingen. De wijzigingen t.o.v. het monitoringprotocol (De Knijf *et al.*, 2015) worden in het vet weergegeven. Voor Rivierrombout werden in het opstartjaar 2016 13 locaties opgevolgd in plaats van de 10 transecten zoals vastgelegd in het monitoringprotocol. Uiteindelijk is het de bedoeling om daar de komende jaren 10 van te weerhouden. 
+
+```{r meetnettenLibel, message= FALSE, warning= FALSE, results= 'asis'}
+
+
+bezoeken_libellen <- filter(bezoeken, groep == "libellen")
+libellen <- unique(bezoeken_libellen$meetnet)
+
+meetnet_libellen <- filter(meetnetKarakt, Meetnet %in% libellen)
+meetnet_libellen <- select(meetnet_libellen,-Generatie)
+
+#meetnet_libellen$Begin_telperiode <- format(as.Date(meetnet_libellen$Begin_telperiode), format = "%d/%m")
+#meetnet_libellen$Einde_telperiode <- format(as.Date(meetnet_libellen$Einde_telperiode), format = "%d/%m")
+
+
+meetnet_libellen <- rename(meetnet_libellen, 'Begin telperiode' = Begin_telperiode, 'Einde telperiode' = Einde_telperiode, 'Meetcyclus (jaar)'= Meetcyclus, 'Bezoeken (/jaar)' = Bezoeken)
+
+pandoc.table(select(meetnet_libellen, 1:5),split.cells = 10, emphasize.strong.cells = which(meetnet_libellen == 7 | meetnet_libellen == 13, arr.ind = TRUE) ,caption = "\\label{tab:meetnetLibellen1} Overzicht van de karakteristieken van de libellenmeetnetten: veldprotocol, type meetnet (integraal of steekproef), aantal meetnetlocaties en de meetcyclus in jaren; wijzigingen t.o.v. het protocol worden in het vet weergegeven" )
+
+pandoc.table(select(meetnet_libellen, 1:2,6:8), split.cells = 10, caption = "\\label{tab:meetnetLibellen2} Overzicht van de karakteristieken van de libellenmeetnetten: aantal bezoeken per jaar, begin en einde van de telperiode" )
+
+
+```
+
+
+
+## Overzicht van de uitgevoerde tellingen
+
+\autoref{tab:tellingenLibellen} geeft een overzicht van de uitgevoerde tellingen in 2016. Voor Gevlekte witsnuitlibel kon een deel van de tellingen niet worden uitgevoerd omdat de maand juni een zeer natte maand was waardoor een deel van de locaties onder water stond en die dus niet toegankelijk waren. In de tabel onderscheiden we het aantal bezochte locaties (dit zijn locaties waar minstens eenmaal werd geteld) en het aantal voldoende getelde locaties (dit zijn de locaties waar het aantal tellingen werd gehaald binnen de afgesproken telperiode conform de meetnetkarakteristieken in \autoref{tab:meetnetLibellen2}). Tellingen die niet konden worden uitgevoerd door overmacht, zoals het geval was bij de Gevlekte witsnuitlibel, brengen we mee in rekening bij het evalueren of een locatie voldoende werd geteld. 
+
+\autoref{tab:tellingenLibellen} geeft ook de doelen die werden voorop gesteld voor 2016. Voor de meeste soorten drukken we die uit in het aantal voldoende getelde locaties. Enkel voor de Rivierrombout drukken we die uit in het aantal bezoeken met tellingen conform het protocol. Enkel voor de Kempense heidelibel werd op een locatie na de doelen niet gehaald. Voor de andere soorten werd er meer geteld dan de voorziene doelen.
+
+```{r overzichtTellingenLibel, message= FALSE, warning= FALSE, results= 'asis'}
+
+tabel_libellen <- filter(overzicht_meetnetten2,soortgroep == "libellen")
+tabel_libellen <- select(tabel_libellen, -soortgroep)
+
+pandoc.table(as.data.frame(tabel_libellen), split.cells = 10,caption = "\\label{tab:tellingenLibellen} Overzicht van de tellingen in 2016 voor de libellenmeetnetten en de vooropgestelde doelen" )
+
+```
+
+
+```{r verkenningBezoeken3, message= FALSE, warning= FALSE}
+
+bezoeken_libellen <- filter(bezoeken, groep == "libellen")
+libellen <- unique(bezoeken_libellen$meetnet)
+
+```
+
+\autoref{fig:telPeriodeLibellen} geeft een overzicht van de tijdstippen van de bezoeken. Op een bezoek na vallen alle bezoeken binnen de telperiodes zoals gespecificeerd in \autoref{tab:meetnetLibellen2}.Bij de bezoeken die aangeduid werden als 'niet volledig conform protocol' werd niet het gehele telgebied doorzocht.
+
+```{r figuurBezoeken, message= FALSE, warning= FALSE, fig.height= 5, fig.width= 6,  fig.cap = "\\label{fig:telPeriodeLibellen}Overzicht tijdstippen waarop tellingen werden uitgevoerd in 2016" }
+
+ggplot(bezoeken_libellen, aes(x = datum, fill = bezoek_status)) + geom_histogram(binwidth = 7) + facet_wrap(~meetnet) + labs(x = "Datum bezoek", y = "Aantal bezoeken")
+
+```
+
+## Verkenning van de ingevoerde gegevens
+
+Tijdens de telling van libellen wordt er een onderscheid gemaakt tussen:
+
+* mannelijke imago's (M)
+* vrouwelijke imago's (F)
+* imago's waarvan geslacht niet werd bepaald (U)
+* tandem of copula
+* eiafzettende libellen
+* excuviae of larvenhuidjes
+* tenerals of niet uitgekleurde imago's
+
+Voor de Rivierrombout worden enkel larvenhuidjes geteld.
+
+Bij de invoer van gegevens in meetnetten.be moeten de aantallen voor de verschillende categorieën worden ingevoerd. Wanneer niets wordt ingegeven voor een bepaalde categorie wordt een nulwaarneming verondersteld. In \autoref{fig:aantallenGW}, \autoref{fig:aantallenM}, \autoref{fig:aantallenKH} en \autoref{fig:aantallenR} worden de ingevoerde aantallen weergegeven voor de verschillende soorten en de verschillende categorieën.
+
+```{r verkenningAantallenLib, message=FALSE, warning= FALSE}
+
+aantallen_libellen <- filter(aantallen, soortgroep == "libellen" & bezoek_status == "Conform protocol" & levensstadium != "")
+
+aantallen_libellen$Categorie <- as.character(aantallen_libellen$levensstadium)
+aantallen_libellen$Categorie <- factor(ifelse(aantallen_libellen$activiteit == "ter plaatse" & aantallen_libellen$levensstadium == "imago", paste("imago's",aantallen_libellen$geslacht, sep=" "), 
+                                       ifelse(aantallen_libellen$activiteit %in% c("copula", "eiafzettend"), as.character(aantallen_libellen$activiteit),aantallen_libellen$Categorie)))
+
+aantallen_libellen$Categorie <- factor(aantallen_libellen$Categorie,levels =c("imago's F", "imago's M", "imago's U", "copula", "eiafzettend", "larvenhuidje", "imago (niet uitgekleurd)"))
+
+aantallen_libellen$Nulwaarneming <- ifelse(aantallen_libellen$aantal == 0, "Ja", "Nee")
+```
+
+
+```{r figuurAantallenGW, message=FALSE, warning= FALSE, fig.width= 6, fig.height= 5, fig.cap = "\\label{fig:aantallenGW}Overzicht ingevoerde aantallen voor Gevlekte witsnuitlibel" }
+
+
+ggplot(filter(aantallen_libellen, meetnet == "Gevlekte witsnuitlibel" & Categorie != "larvenhuidje"), aes(x = datum, y = aantal, colour = Nulwaarneming)) + geom_point( size = 1) + facet_wrap(~Categorie)  + theme(legend.position="bottom", axis.text.x = element_text(angle = 90, hjust = 1))
+
+
+```
+
+Over de verschillende soorten heen zien we dat er hoofdzakelijk mannelijke imago's werden gezien. Dit is is te verwachten aangezien de mannetjes aan het voortplantingsbiotoop verblijven en vrouwtjes enkel afkomen om daar eitjes af te leggen. Meestal konden mannelijke en vrouwelijke imago's goed onderscheiden worden. Enkel bij de Kempense heidelibel werd in enkele gevallen het geslacht van de imago's niet bepaald. Voor deze soort is het dan ook moeilijker om het gesclacht visueel te bepalen. Verder zien we dat de grootste aantallen werden waargenomen bij Maanwaterjuffer. Er zijn echter geen aantallen die als foutief of onrealistisch werden beoordeeld door de soortexperten.
+
+Verder zien we dat copula voornamelijk bij Maanwaterjuffer werden waargenomen, dat er slechts één waarneming is van een eiafzettende libel (Kempense heidelibel) en dat er slechts één niet uitgekleurde imago werd waargenomen (Maanwaterjuffer). Larvenhuidjes werde enkel geteld bij de Rivierrombout.
+
+
+```{r figuurAantallenMJ, message=FALSE, warning= FALSE, fig.width= 6, fig.height= 5, fig.cap = "\\label{fig:aantallenM}Overzicht ingevoerde aantallen voor Maanwaterjuffer" }
+
+
+ggplot(filter(aantallen_libellen, meetnet == "Maanwaterjuffer" & Categorie != "larvenhuidje"), aes(x = datum, y = aantal, colour = Nulwaarneming)) + geom_point( size = 1) + facet_wrap(~Categorie)  + theme(legend.position="bottom", axis.text.x = element_text(angle = 90, hjust = 1))
+
+
+```
+
+
+
+```{r figuurAantallenKH, message=FALSE, warning= FALSE, fig.width= 6, fig.height= 6, fig.cap = "\\label{fig:aantallenKH}Overzicht ingevoerde aantallen voor Kempense heidelibel" }
+
+
+ggplot(filter(aantallen_libellen, meetnet == "Kempense heidelibel" & Categorie != "larvenhuidje"), aes(x = datum, y = aantal, colour = Nulwaarneming)) + geom_point( size = 1) + facet_wrap(~Categorie)  + theme(legend.position="bottom", axis.text.x = element_text(angle = 90, hjust = 1))
+
+
+```
+
+
+
+```{r figuurAantallenRR, message=FALSE, warning= FALSE, fig.width= 4, fig.height= 4, fig.cap = "\\label{fig:aantallenR}Overzicht ingevoerde aantallen voor Rivierrombout" }
+
+
+ggplot(filter(aantallen_libellen, meetnet == "Rivierrombout"), aes(x = datum, y = aantal, colour = Nulwaarneming)) + geom_point( size = 1) + facet_wrap(~Categorie)  + theme(legend.position="bottom", axis.text.x = element_text(angle = 90, hjust = 1))
+
+
+```
+
+
+
+```{r verkenningAantallen2, message=FALSE, warning= FALSE}
+
+# copula bestaat uit twee imago's
+aantallen_libellen$aantal_imago <- ifelse(aantallen_libellen$levensstadium == "imago",
+                                          ifelse(aantallen_libellen$activiteit == "copula",aantallen_libellen$aantal * 2, aantallen_libellen$aantal), 0)
+
+aantallen_libellen$aantal_larvenhuidje <- ifelse(aantallen_libellen$levensstadium == "larvenhuidje",aantallen_libellen$aantal,0)
+                                          
+
+aantallen_libellen_imago <- summarise(group_by(aantallen_libellen,meetnet, locatie, taak, bezoek_status, datum),
+                                    aantal = sum(aantal_imago))
+
+aantallen_libellen_imago$Nulwaarneming <- ifelse(aantallen_libellen_imago$aantal == 0, "Ja", "Nee")
+
+aantallen_libellen_larvenhuidje <- summarise(group_by(aantallen_libellen,meetnet, locatie, taak, bezoek_status, datum),
+                                    aantal = sum(aantal_larvenhuidje))
+
+aantallen_libellen_larvenhuidje$Nulwaarneming <- ifelse(aantallen_libellen_larvenhuidje$aantal == 0, "Ja", "Nee")
+```
+
+\autoref{fig:aantallenLibellen} toont de verdeling van de totaal getelde aantallen per bezoek en onderscheidt de nulwaarnemingen. Voor Gevlekte witsnuitlibel, Maanwaterjuffer en Kempense heidelibel is het totaal aantal dieren dus de som van de mannetjes, vrouwtjes en geslacht onbepaald (M, F en U), tweemaal het aantal eiafzettende libellen en tweemaal het aantal copula. De verticale lijn in \autoref{fig:aantallenLibellen} geeft het gemiddelde getelde aantal per bezoek. Algemeen zien we een grote spreiding in getelde aantallen en een groot aantal nulwaarnemingen. Het grootste aantal nulwaarnmingen vinden we voor de Gevlekte witsnuitlibel en dit resulteert dan ook in het laagste gemiddelde aantal getelde libellen. Voor Maanwaterjuffer zien we dat het vaakst aantallen tussen 10 en 20 werden geteld en zien we gemiddelde van ongeveer 20. Dit is eigen aan waterjuffers, die in veel grotere aantallen vliegen.     
+
+```{r aantallenLibellen, message=FALSE, warning= FALSE, fig.width= 6, fig.height= 5, fig.cap = "\\label{fig:aantallenLibellen}Histogram van totaal aantal getelde imago's en larvenhuidjes per bezoek. De blauwe vertikale lijn geeft het gemiddelde weer." }
+figuur_aantallen(filter(aantallen_bezoek_relevant, soortgroep == "libellen"))
+```
+
+
+\autoref{fig:aantallenImago1} en \autoref{fig:aantallenImago2} geven de evolutie van de totaal aantal getelde imago's binnen het seizoen. In \autoref{fig:aantallenImago1} worden tellingen van eenzelfde locatie verbonden met een stippellijn. De blauwe lijn in \autoref{fig:aantallenImago2} toont de gemiddelde evolutie binnen het seizoen, waarbij de grijze banden aan beide kanten van de blauwe lijn de onzekerheid aangeven op deze gemiddelde evolutie.
+
+Voor Gevlekte witsnuitlibel zien we een piek in getelde aantallen rond de eerste week van juni. De lage aantallen in de tweede helft van juni zijn te wijten aan het slechte weer in die periode. Bij de Kempense heidelibel valt één locatie op waar relatief grote aantallen werden geteld en dit specifiek op het eind van de telperiode. Op deze locatie komt al jaren de belangrijkste populatie in Vlaanderen voor. De hoge aantallen op het einde van de telperiode is mogelijks te wijten op een combinatie van factoren. Juli was niet echt goed weer en pas vanaf de tweede week van augustus bleef het aanhoudend zeer warm zomers weer. Ook de temperatuur op de dag van die late telling en de dagen voordien was optimaal. Bij Maanwaterjuffer springt een locatie eruit met zeer hoge aantallen. Deze ene locatie draagt uiteraard sterk bij aan de globale piek in aantallen die we kunnen zien in de tweede week van mei. 
+
+```{r aantallenImago1, message=FALSE, warning= FALSE, fig.width= 6, fig.height= 6, fig.cap = "\\label{fig:aantallenImago1}Overzicht van totaal aantal getelde imago's per bezoek; tellingen op eenzelfde lokatie worden verbonden met een stippellijn"}
+ggplot(filter(aantallen_libellen_imago, meetnet !="Rivierrombout"), aes(x = datum, y = aantal,  group= locatie, colour = Nulwaarneming )) + geom_point(alpha = 0.6) +  geom_line(linetype = 2, colour = "black" , alpha =0.3, size = 0.4)  + facet_wrap(~ meetnet, scales = "free", nrow = 2) + labs(x = "Datum bezoek", y = "Totaal aantal getelde imago's per bezoek")  + theme(legend.position="bottom", axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+
+```{r aantallenImago2, message=FALSE, warning= FALSE, fig.width= 6, fig.height= 6,  fig.cap = "\\label{fig:aantallenImago2}Overzicht van totaal aantal getelde imago's per bezoek en de globale evolutie in getelde aantallen binnen het telseizoen (blauwe lijn)"}
+ggplot(filter(aantallen_libellen_imago, meetnet !="Rivierrombout"), aes(x = datum, y = aantal)) + geom_point(alpha = 0.6)  + facet_wrap(~ meetnet, scales = "free", nrow = 2) + geom_smooth(method = "gam", method.args = list(family = poisson),formula = y ~ s(x, bs = "cs", k = 6) ,size = 0.4, colour = "blue") + labs(x = "Datum bezoek", y = "Totaal aantal getelde imago's per bezoek")  + theme(legend.position="bottom", axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+De globale evolutie in getelde aantallen vertoont enkel voor de Maanwaterjuffer een normal verloop. Bij de Gevlekte witsnuitlibel was het aanhoudende slechte weer in juni de grote oorzaak voor een niet normaal verloop in getelde aantallen. Wellicht trad er in het begin van het vliegseizoen een grote mortaliteit op. Bij de Kempense heidelibel zorgde het slecht weer voor een zwakke start, maar het aanhoudende warme zomerse weer in augustus, resulteerde in maximal getelde aantallen op het einde van de telperiode i.p.v. in het begin van de telperiode.  
+
+
+De uitsluippiek bij veel libellen en ook bij de Rivierrombout vertoont een specifiek patroon waarbij na een aarzelend begin het aantal uitsluipende dieren sterk toe neemt om dan geleidelijk af te nemen de weken daarop (zogenaamde lange staart). (\autoref{fig:aantallenLarvenhuidje1} en \autoref{fig:aantallenLarvenhuidje2}). 
+
+
+```{r aantallenLarvenhuidje1, message=FALSE, warning= FALSE, fig.width= 5, fig.height= 5,  fig.cap = "\\label{fig:aantallenLarvenhuidje1}Overzicht van totaal aantal getelde larvenhuidjes per bezoek; tellingen op eenzelfde lokatie worden verbonden met een stippellijn"}
+ggplot(filter(aantallen_libellen_larvenhuidje, meetnet =="Rivierrombout"), aes(x = datum, y = aantal,  group= locatie, colour =locatie )) + geom_point(alpha = 0.6) +  geom_line(linetype = 2, colour = "black" , alpha =0.3, size = 0.4)  + facet_wrap(~ meetnet, scales = "free", nrow = 2) + labs(x = "Datum bezoek", y = "antal getelde larvenhuidjes per bezoek")  + theme(legend.position="none", axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+
+```{r aantallenLarvenhuidje2, message=FALSE, warning= FALSE, fig.width= 5, fig.height= 5,  fig.cap = "\\label{fig:aantallenLarvenhuidje2}Overzicht van totaal aantal getelde larvenhuidjes per bezoek en de globale evolutie in getelde aantallen binnen het telseizoen (blauwe lijn)"}
+ggplot(filter(aantallen_libellen_larvenhuidje, meetnet =="Rivierrombout"), aes(x = datum, y = aantal)) + geom_point(alpha = 0.6)  + facet_wrap(~ meetnet, scales = "free", nrow = 2) + geom_smooth(method = "gam", method.args = list(family = poisson),formula = y ~ s(x, bs = "cs", k = 6) ,size = 0.4, colour = "blue") + labs(x = "Datum bezoek", y = "Aantal getelde larvenhuidjes per bezoek")  + theme(legend.position="none", axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+## Wijzigingen monitoringprotocol
+
+Op basis van de evaluatie van het veldwerkseizoen 2016, voeren we onderstaande aanpassingen aan het monitoringprotocol door. Deze aanpassingen zullen ingaan vanaf het veldwerkseizoen 2017.
+
+**Kempense heidelibel**
+
+* Schrappen meetnetlocatie Balen – Most: de soort werd er niet waargenomen in 2016 (en ook niet in 2015 en 2014). Bovendien lijkt het leefgebied niet geschikt voor de soort.
+
+**Rivierrombout**
+
+* Wijziging veldprotocol: wanneer er na 5 bezoeken aan een locatie nog steeds geen larvenhuidje werd gevonden, is een 6^de^ bezoek niet meer nodig. De kans is dan immers zeer klein dat er nog een larvenhuidje gevonden wordt in het 6^de^ bezoek. Bovendien is het voor de teller weinig motiverend om nog een bezoek uit te voeren als er in de 5 eerdere bezoeken niets werd gevonden.
+
+## Opstart nieuwe meetnetten in 2017
+
+In 2017 zullen volgende meetnetten worden opgestart:
+
+* Variabele waterjuffer
+* Vroege glazenmaker
+* Speerwaterjuffer
+
+# Amfibieën
+
+## Meetnetkarakteristieken
+
+\autoref{tab:meetnetamfibie1} en \autoref{tab:meetnetamfibie2} geven een overzicht van de karakteristieken van de amfibieënmeetnetten die in 2016 van start gingen. De wijzigingen t.o.v. het monitoringprotocol (De Bruyn *et al.*, 2015a; De Bruyn *et al.*, 2015b) worden in het vet weergegeven. Het aantal bezoeken voor het tellen van roepkoren van de Boomkikker werd van drie naar twee gebracht. Daarnaast hebben we de eittellingen van de Boomkikker geschrapt vermits deze weinig extra informatie oplevert t.o.v. de larventellingen. Voor de Vuursalamander werden drie locaties opgesplitst zodat het meetnet nu uit 38 locaties bestaat i.p.v. de oorspronkelijke 35 locaties. De locatie 'Makkegemse bossen - overige' is opgesplitst in 'Makkegemse bossen - overige' en 'Heilig-Geestgoed', 'Trimpont - Kappellenbos' in 'Trimpont' en 'Kappellenbos' en 'Buggenhoutbos' in 'Buggenhoutbos-noord' en Buggenhoutbos-zuid'. 
+
+```{r meetnettenAmfibie, message= FALSE, warning= FALSE, results= 'asis'}
+
+
+bezoeken_amfibie <- filter(bezoeken, groep == "amfibieën")
+amfibie <- unique(bezoeken_amfibie$meetnet)
+
+meetnet_amfibie <- filter(meetnetKarakt, Meetnet %in% amfibie)
+meetnet_amfibie <- select(meetnet_amfibie,-Generatie)
+
+meetnet_amfibie <- rename(meetnet_amfibie, 'Begin telperiode' = Begin_telperiode, 'Einde telperiode' = Einde_telperiode, 'Meetcyclus (jaar)'= Meetcyclus, 'Bezoeken (/jaar)' = Bezoeken)
+
+pandoc.table(as.data.frame(select(meetnet_amfibie, 1:5)),split.cells = 10, emphasize.strong.cells = which(meetnet_amfibie == 38, arr.ind = TRUE) ,caption = "\\label{tab:meetnetamfibie1} Overzicht van de karakteristieken van de amfibiemeetnetten: veldprotocol, type meetnet (integraal of steekproef), aantal meetnetlocaties en de meetcyclus in jaren; wijzigingen t.o.v. het protocol worden in het vet weergegeven" )
+
+vet <- matrix(data = c(1,3), nrow = 1, ncol = 2)
+
+pandoc.table(as.data.frame(select(meetnet_amfibie, 1:2,6:8)), split.cells = 10, emphasize.strong.cells = vet, caption = "\\label{tab:meetnetamfibie2} Overzicht van de karakteristieken van de amfibiemeetnetten: aantal bezoeken per jaar, begin en einde van de telperiode" )
+
+
+```
+
+
+
+## Overzicht van de uitgevoerde tellingen
+
+\autoref{tab:tellingenamfibie} geeft een overzicht van de uitgevoerde tellingen in 2016. In de tabel onderscheiden we het aantal bezochte locaties (dit zijn locaties waar minstens eenmaal werd geteld) en het aantal voldoende getelde locaties (dit zijn de locaties waar het aantal tellingen werd gehaald binnen de afgesproken telperiode conform de meetnetkarakteristieken in \autoref{tab:meetnetamfibie2}). Één locatie van Vuursalamander kon niet geteld worden door veiligheidsredenen.   
+\autoref{tab:tellingenamfibie} geeft ook de doelen die werden voorop gesteld voor 2016. Voor beide soorten werden de doelen ruimschoots gehaald.
+
+```{r overzichtTellingenAmfibie, message= FALSE, warning= FALSE, results= 'asis'}
+
+tabel_amfibie <- filter(overzicht_meetnetten2,soortgroep == "amfibieën")
+tabel_amfibie <- select(tabel_amfibie, -soortgroep)
+
+pandoc.table(as.data.frame(tabel_amfibie), split.cells = 10,caption = "\\label{tab:tellingenamfibie} Overzicht van de tellingen in 2016 voor de amfibieënmeetnetten en de vooropgestelde doelen" )
+
+
+```
+
+\autoref{fig:figuurBezoekenAmfibie} geeft een overzicht van de tijdstippen van de bezoeken. In de tweede helft van juni werden er al larventellingen uitgevoerd op 9 locaties. Dit is vóór de telperiode gespecificeerd in \autoref{tab:meetnetamfibie2}. De soortenexpert geeft echter aan de omstandigheden toen al geschikt waren voor het tellen van larven. Vermits de eerste helft van september zeer droog was, werden de vuursalamandertellingen pas vanaf de tweede helft van september uitgevoerd. Één telling vond plaats na de vooropgestelde telperiode. De omstandigheden waren dan echter nog voldoende gunstig om tot een bruikbare telling te komen. De telling van vuursalamander 'niet conform protocol' gebeurde onder niet optimale weersomstandigheden.     
+
+```{r figuurBezoekenAmfibie, message= FALSE, warning= FALSE, fig.height= 5, fig.width= 6.5,  fig.cap = "\\label{fig:figuurBezoekenAmfibie}Overzicht tijdstippen waarop tellingen werden uitgevoerd in 2016" }
+
+bezoeken_amfibie <- filter(bezoeken, groep == "amfibieën" & bezoek_status != "Geen veldwerk mogelijk")
+bezoeken_amfibie$protocol <- revalue(bezoeken_amfibie$protocol, c("Padden en kikkers - Roepkoren" = "Roepkoren", "Padden en kikkers - Larven" = "Larven" ))
+bezoeken_amfibie$Meetnet_protocol <- ifelse(bezoeken_amfibie$meetnet == "Boomkikker", paste(bezoeken_amfibie$meetnet, bezoeken_amfibie$protocol,sep=" - "), as.character(bezoeken_amfibie$meetnet))
+
+ggplot(unique(select(bezoeken_amfibie,meetnet,locatie, datum, Meetnet_protocol, bezoek_status)), aes(x = datum, fill = bezoek_status)) + geom_histogram(binwidth = 7) + facet_wrap( ~ Meetnet_protocol, scales = "free_x", nrow = 2) + labs(x = "Datum bezoek", y = "Aantal bezoeken")  + theme( axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+
+
+## Verkenning van de ingevoerde gegevens
+
+### Aantallen
+
+\autoref{fig:figuurHistogramAmfibie} toont de verdeling van de totaal getelde aantallen per bezoek en onderscheidt de nulwaarnemingen. De verticale lijn geeft het gemiddelde getelde aantal per bezoek. Opvallend is het groot aantal getelde larven (469) van Boomkikker op één locatie en enkele uitschieters voor het Vuursalamander met 301 en 319 getelde aantallen. Alle tellingen beschouwen we echter als plausibel. 
+
+```{r figuurHistogramAmfibie, message=FALSE, warning= FALSE, fig.width= 5.5, fig.height= 5.5,  fig.cap = "\\label{fig:figuurHistogramAmfibie}Histogram van totaal aantal getelde adulten en larven per bezoek. De blauwe vertikale lijn geeft het gemiddelde weer."}
+
+figuur_aantallen(filter(aantallen_bezoek_relevant,soortgroep == "amfibieën"), legend_position = "bottom")
+```
+
+
+```{r verkenningAantallenAmfibie, message=FALSE, warning= FALSE, fig.width= 6, fig.height= 7}
+aantallen_amfibie <- filter(aantallen_bezoek_relevant, soortgroep == "amfibieën")
+
+aantallen_amfibie <- filter(aantallen_amfibie, bezoek_status == "Conform protocol")
+aantallen_amfibie$Nulwaarneming <- ifelse(aantallen_amfibie$aantal == 0, "Ja", "Nee" )
+```
+
+\autoref{fig:figuurAantallenAmfibie1} en \autoref{fig:figuurAantallenAmfibie2} geven de evolutie van de getelde aantallen binnen het seizoen. In \autoref{fig:figuurAantallenAmfibie1} worden tellingen van eenzelfde locatie verbonden met een stippellijn. De blauwe lijn in \autoref{fig:figuurAantallenAmfibie2} toont de gemiddelde evolutie binnen het seizoen, waarbij de grijze banden aan beide kanten van de blauwe lijn de onzekerheid aangeven op deze gemiddelde evolutie.
+
+Het valt op dat de in een groot deel van boomkikkerlocaties beide roepkoortellingen relatief kort na elkaar gebeurde (ongeveer één week tussen beide tellingen). Verder zien we dat de variatie binnen een locatie op het geschatte aantal roepkoren relatief klein is en dat de meeste locaties die in eenzelfde periode werden geteld een gelijkaardige evolutie vertonen in aantallen (een daling begin mei en een stijging eind mei-begin juni). 
+
+Voor de larven van de boomkikker zien we een piek in getelde aantallen begin juli. De meeste nulwaarnemingen gebeurde in het begin en het einde van de telperiode. 
+
+Voor Vuursalamander zien we een grotere variatie in getelde aantallen per locatie en een duidelijke daling in de getelde aantallen vanaf half oktober. 
+
+```{r figuurAantallenAmfibie1, message=FALSE, warning= FALSE, fig.width= 6, fig.height= 7,  fig.cap = "\\label{fig:figuurAantallenAmfibie1}Overzicht van de getelde aantallen per bezoek; tellingen op eenzelfde locatie worden verbonden met een stippellijn"}
+
+ggplot(aantallen_amfibie, aes(x = datum, y = aantal,  group = locatie, colour = Nulwaarneming)) + geom_point( size = 1, alpha = 0.8) + geom_line(colour = "black", linetype = 2, alpha = 0.3) + facet_wrap( ~ soort_stadium ,scales = "free", nrow =2) + theme(legend.position = "bottom", axis.text.x = element_text(angle = 90, hjust = 1)) + labs(x = "Datum bezoek", y = "Aantal getelde exemplaren per bezoek")
+
+```
+
+
+```{r figuurAantallenAmfibie2, message=FALSE, warning= FALSE, fig.width= 6, fig.height= 7,  fig.cap = "\\label{fig:figuurAantallenAmfibie2}Overzicht van de getelde aantallen per bezoek en de globale evolutie binnen het telseizoen (blauwe lijn)"}
+ggplot(aantallen_amfibie, aes(x = datum, y = aantal, colour = Nulwaarneming)) + geom_point( size = 1, alpha = 0.8) + geom_smooth(method = "gam", method.args = list(family = poisson),formula = y ~ s(x, bs = "cs", k = 6) ,size = 0.4, colour = "blue") + facet_wrap( ~ soort_stadium , scales = "free", nrow =2) + theme(legend.position = "bottom", axis.text.x = element_text(angle = 90, hjust = 1)) + labs(x = "Datum bezoek", y = "Aantal getelde exemplaren per bezoek")
+```
+
+
+```{r verkenningLarvenBK, message=FALSE, warning= FALSE, fig.width= 6, fig.height= 7}
+
+covariabelen_amfibie <- filter(covariabelen, meetnet %in% c("Boomkikker", "Vuursalamander"))
+
+aantal_scheppen <- select(filter(covariabelen_amfibie, bezoekvariabele == "Aantal keer geschept"), visit_id, waarde )
+
+aantal_scheppen <- rename(aantal_scheppen, AantalKeerGeschept = waarde)
+aantal_scheppen$AantalKeerGeschept <- as.numeric(aantal_scheppen$AantalKeerGeschept)
+
+aantallen_boomkikker_larve_schep <- left_join(filter(aantallen, meetnet == "Boomkikker" & levensstadium == "larve" & bezoek_status =="Conform protocol"), aantal_scheppen)
+
+
+aantallen_boomkikker_larve_bezoek <- summarise(group_by(aantallen_boomkikker_larve_schep, meetnet, levensstadium, visit_id, locatie, datum, AantalKeerGeschept),
+                                               AantalLarven = sum(aantal),
+                                               AantalSchepIngevoerd = n())
+```
+
+
+Bij de larventellingen van Boomkikker noteren de vrijwilligers ook het aantal keer dat er werd geschept met een schepnet. \autoref{fig:figuurLarvenBK1} toont dat er geen lineair verband is tussen het aantal scheppen met een schepnet en het aantal getelde larven.
+
+
+```{r figuurLarvenBK1, message=FALSE, warning= FALSE, fig.width= 4, fig.height= 4,  fig.cap = "\\label{fig:figuurLarvenBK1}Relatie tussen het aantal keer er werd geschept en het aantal getelde larven"}
+
+ggplot(aantallen_boomkikker_larve_bezoek, aes(x = AantalKeerGeschept, y = AantalLarven)) + geom_point(size = 2, alpha= 0.6) + geom_smooth(method = "gam", method.args = list(family = poisson),formula = y ~ s(x, bs = "cs", k = 6) ,colour = "blue", size = 0.4) + labs(y = "Aantal getelde larven", x = "Aantal keer geschept met schepnet")
+```
+
+```{r verkenningLarvenBK2, message=FALSE, warning= FALSE, fig.width= 6, fig.height= 7}
+aantallen_boomkikker_adult_locatie <- summarise(group_by(filter(aantallen_amfibie, meetnet == "Boomkikker" & levensstadium == "adulten"), locatie),
+                                                         AantalAdulten = sum(aantal),
+                                                         GemiddeldAantalAdulten = mean(aantal),
+                                                MaxAantalAdulten = max(aantal),
+                                                AantalBezoeken = n()
+                                                )
+aantallen_boomkikker_locatie <- full_join(aantallen_boomkikker_adult_locatie,aantallen_boomkikker_larve_bezoek, by = "locatie" )
+```
+
+Er is geen duidelijk verband tussen het aantal roepende mannetjes en de getelde larven (\autoref{fig:figuurLarvenBK2}). Opvallend is dat van de vijf poelen met het grootste aantal roepende mannetjes vier poelen een zeer laag aantal larven bevat. De larventellingen geven dus bijkomende informatie over de populatie t.o.v. de telling van de roepkoren.        
+
+```{r figuurLarvenBK2, message=FALSE, warning= FALSE, fig.width= 6, fig.height=4, fig.cap = "\\label{fig:figuurLarvenBK2}Relatie tussen het aantal getelde adulten en het aantal getelde larven van Boomkikker"}
+
+ggplot(aantallen_boomkikker_locatie, aes(x = GemiddeldAantalAdulten, y = AantalLarven, size =  AantalKeerGeschept)) + geom_point(alpha= 0.6) + geom_smooth(method = "gam", method.args = list(family = poisson),formula = y ~ s(x, bs = "cs", k = 6) ,size = 0.4, colour = "blue",) + labs(x= "Gemiddeld aantal roepende mannetjes per locatie", y = "Aantal getelde larven", size ="Aantal scheppen")
+
+```
+
+\FloatBarrier
+
+### Kwaliteit leefgebied
+
+Om de kwaliteit van het leefgebied van de Boomkikker te beoordelen bepalen de vrijwilligers voor elke poel in het meetnet volgende karakteristieken:
+
+* aanwezigheid vis,
+* beschaduwing,
+* permanente waterkolom,
+* waterkwaliteit,
+* pH,
+* maximale diepte poel,
+* oppervlakte poel.
+
+\autoref{fig:figuurCovariabelenBK1} toont de karakteristieken die worden ingeschat a.d.h.v. een aantal vaste categorieën waaruit de vrijwilliger een selectie moet maken. We zien dat er nog vaak 'Onbekend' wordt ingegeven voor de karakteristieken. Mogelijks kan dit verholpen worden door duidelijkere richtlijnen op te nemen in de handleiding over hoe de karakteristieken bepaald moeten worden.
+
+
+
+```{r verkenningCovariabelenAmfibie}
+
+
+covariabelen_lijst <- unique(covariabelen_amfibie$bezoekvariabele)
+covariabelen_amfibie <- filter(covariabelen_amfibie, bezoekvariabele != "")
+
+covariabelen_amfibie$waarde_kort <- revalue(covariabelen_amfibie$waarde, c(
+  "goed (helder water, typische oever en/of waterplanten, weinig verlanding, niet zichtbaar vervuild)" = "goed",
+  "middelmatig (tussen slecht en goed)" = "middelmatig",
+  "slecht (verwaarloosde poel met eutroof water (algen, kroos), anders vervuild of verregaand verland)" = "slecht",
+  "FALSE" = "nee", "TRUE" = "ja"
+  ))
+
+covariabelen_amfibie$waarde_kort <- ifelse(covariabelen_amfibie$waarde_kort == "", "niet ingevuld", covariabelen_amfibie$waarde_kort)
+
+covariabelen_amfibie_wide <- covariabelen_amfibie %>%
+  select(-waarde)  %>%
+  spread(key = bezoekvariabele, value = waarde_kort)
+
+covariabelen_amfibie_wide$`aanwezigheid vis` <- factor(covariabelen_amfibie_wide$`aanwezigheid vis`, levels = c("ja","nee","niet ingevuld"))
+covariabelen_amfibie_wide$`permanente waterkolom` <- factor(covariabelen_amfibie_wide$`permanente waterkolom`, levels = c("ja","nee","niet ingevuld"))
+covariabelen_amfibie_wide$beschaduwing <- factor(covariabelen_amfibie_wide$beschaduwing, levels =c("geen schaduw", "<30%", "30-60%", "onbekend"))
+covariabelen_amfibie_wide$waterkwaliteit <- factor(covariabelen_amfibie_wide$waterkwaliteit, levels = c("slecht", "middelmatig", "goed", "onbekend"))
+#covariabelen_amfibie_wide$`oppervlakte waterpartij` <- factor(covariabelen_amfibie_wide$`oppervlakte waterpartij`)
+covariabelen_amfibie_wide$`oppervlakte waterpartij` <- factor(covariabelen_amfibie_wide$`oppervlakte waterpartij`, levels = c("200 m²", "250 m²","300 m²", "400 m²", "500 m²", "600 m²","1000 m²", "3000 m²","5000 m²", "2 are", "3 are", "12x7m", "15x8m", "25x15m","20x50m ongeveer", "50x80m ongeveer", "Diameter 40m", "niet ingevuld"))
+covariabelen_amfibie_wide$`pH (zuurtegraad)` <- factor(covariabelen_amfibie_wide$`pH (zuurtegraad)`)
+covariabelen_amfibie_wide$`maximale diepte` <- factor(covariabelen_amfibie_wide$`maximale diepte`, levels=c("0.5m","0.6m", "0.7m", "0.80m", "1m", ">1m", "1,20m", "2m", "2 meter", "2,5 m", "3 meter", "niet ingevuld"))
+
+
+```
+
+
+```{r figuurCovariabelenBK1, fig.width=5, fig.height= 5.5, fig.cap = "\\label{fig:figuurCovariabelenBK1}Overzicht van ingevoerde waarden voor de verschillende indiatoren voor de kwaliteit van het leefgebied"}
+
+p1 <- ggplot(covariabelen_amfibie_wide, aes(x= `aanwezigheid vis`)) + geom_bar()  + theme(legend.position = "none" ,axis.text.x = element_text(angle = 90, hjust = 1)) + labs( y ="Aantal poelen")
+
+p2 <- ggplot(covariabelen_amfibie_wide, aes(x= `permanente waterkolom`)) + geom_bar()  + theme(legend.position = "none" ,axis.text.x = element_text(angle = 90, hjust = 1)) + labs( y ="Aantal poelen")
+
+p3 <- ggplot(covariabelen_amfibie_wide, aes(x= beschaduwing)) + geom_bar()  + theme(legend.position = "none" ,axis.text.x = element_text(angle = 90, hjust = 1)) + labs( y ="Aantal poelen")
+
+p4 <- ggplot(covariabelen_amfibie_wide, aes(x= waterkwaliteit)) + geom_bar()  + theme(legend.position = "none" ,axis.text.x = element_text(angle = 90, hjust = 1)) + labs( y ="Aantal poelen")
+
+grid.arrange(p1,p2,p3,p4)
+
+```
+
+Maximale diepte, pH en oppervlakte waterpartij kon in meetnetten.be ingevoerd worden via een vrij veld. Het is duidelijk dat dit geen eenvormige gegevens oplevert (\autoref{fig:figuurCovariabelenBK2}). Vanaf 2017 zal daarom ook met onderstaande vaste categorieën worden gewerkt. 
+
+* maximale diepte
+    + kleiner dan 0,5 m
+    + tussen 0,5 m en 1 m
+    + groter dan 1 m
+* wateroppervlakte
+    + kleiner dan 100 m²
+    + tussen 100 m² en 250 m²
+    + tussen 250 m² en 400 m²
+    + groter dan 400 m²
+* pH
+    + kleiner dan 6
+    + tussen 6 en 7
+    + tussen 7 en 8
+    + groter dan 8
+
+Opvallend is ook dat voor bijna de helft van de poelen er geen gegevens werden ingevoerd voor pH en wateroppervlakte. Ook hiervoor zouden er best betere richtlijnen worden opgenomen in de handleiding.
+
+```{r figuurCovariabelenBK2, fig.width=4, fig.height= 7, fig.cap = "\\label{fig:figuurCovariabelenBK2}Overzicht van ingevoerde waarden voor de maximale diepte van poel, oppervlakte waterpartij en pH"}
+
+p5 <- ggplot(covariabelen_amfibie_wide, aes(x= `maximale diepte`)) + geom_bar()  + theme(legend.position = "none" ,axis.text.x = element_text(angle = 90, hjust = 1)) + labs( y ="Aantal poelen")
+
+p6 <- ggplot(covariabelen_amfibie_wide, aes(x= `oppervlakte waterpartij`)) + geom_bar()  + theme(legend.position = "none" ,axis.text.x = element_text(angle = 90, hjust = 1)) + labs( y ="Aantal poelen")
+
+p7 <- ggplot(covariabelen_amfibie_wide, aes(x= `pH (zuurtegraad)`)) + geom_bar()  + theme(legend.position = "none" ,axis.text.x = element_text(angle = 90, hjust = 1)) + labs( y ="Aantal poelen")
+
+grid.arrange(p5, p6, p7, nrow = 3)
+
+```
+
+\FloatBarrier
+
+## Wijzigingen monitoringprotocol
+
+Op basis van de evaluatie van het veldwerkseizoen 2016, voeren we onderstaande aanpassingen aan het monitoringprotocol door. Deze aanpassingen zullen ingaan vanaf het veldwerkseizoen 2017.
+
+**Vuursalamander**
+
+* Wijziging veldprotocol: bij grote droogte kan de telperiode met 2 weken tot 1 maand verlengd worden.
+* Schrappen meetnetlocatie: 'Broekbos' in de Voerstreek wordt geschrapt uit het meetnet omdat de Vuursalamander daar sinds 2001 niet meer werd waargenomen.
+
+**Boomkikker**
+
+* Wijziging veldprotocol: het begin van de telperiode voor roepkoren vervroegen we naar 1 april (ipv 15 april).
+
+* Wijziging veldprotocol: het aantal larven van Boomkikker moet niet meer per schepbeweging genoteerd worden. Het totaal over alle schepbewegingen en het totaal aantal uitgevoerde schepbewegingen volstaat. Er moeten minimum 5 en maximum 30 schepbewegingen worden uitgevoerd. Wanneer het niet mogelijk is om larven te scheppen, moet de vrijwilliger kunnen aangeven of er metamorfen werden waargenomen (aan-/afwezigheid). Deze zijn eveneens een indicator voor een succesvolle voortplanting. Hiervoor moet een bijkomend invoerveld voorzien worden in meetnetten.be. Ook voor de Kamsalamander voeren we deze wijzigingen door.
+
+## Opstart nieuwe meetnetten in 2017
+
+In 2017 zullen volgende meetnetten worden opgestart:
+
+* Kamsalamander
+* Knoflookpad
+
+# Vlinders
+
+## Meetnetkarakteristieken
+
+\autoref{tab:meetnetvlinders1} en \autoref{tab:meetnetvlinders2} geven een overzicht van de karakteristieken van de vlindermeetnetten die in 2016 van start gingen (Maes *et al.* 2015). Voor Veldparelmoervlinder werden twee bijkomende locaties toegevoegd aan het meetnet.   
+
+```{r meetnettenvlinders, message= FALSE, warning= FALSE, results= 'asis'}
+
+
+bezoeken_vlinders <- filter(bezoeken, groep == "vlinders")
+vlinders <- unique(bezoeken_vlinders$meetnet)
+
+meetnet_vlinders <- filter(meetnetKarakt, Meetnet %in% vlinders)
+
+meetnet_vlinders <- rename(meetnet_vlinders, 'Begin telperiode' = Begin_telperiode, 'Einde telperiode' = Einde_telperiode, 'Meetcyclus (jaar)'= Meetcyclus, 'Bezoeken (/jaar)' = Bezoeken)
+
+meetnet_vlinders1 <- unique(select(meetnet_vlinders, 1:5))
+row.names(meetnet_vlinders1) <- NULL
+
+pandoc.table(as.data.frame(meetnet_vlinders1),split.cells = 10, caption = "\\label{tab:meetnetvlinders1} Overzicht van de karakteristieken van de vlindermeetnetten: veldprotocol, type meetnet (integraal of steekproef), aantal meetnetlocaties en de meetcyclus in jaren; wijzigingen t.o.v. protocol worden in vet weergegeven" )
+
+pandoc.table(as.data.frame(select(meetnet_vlinders, 1:2,6:9)), split.cells = 10,  caption = "\\label{tab:meetnetvlinders2} Overzicht van de karakteristieken van de vlindermeetnetten: aantal bezoeken per jaar, begin en einde van de telperiode" )
+
+
+```
+
+
+## Overzicht van de uitgevoerde tellingen
+
+\autoref{tab:tellingenvlinders} geeft een overzicht van de uitgevoerde tellingen in 2016. In de tabel onderscheiden we het aantal bezochte locaties (dit zijn locaties waar minstens eenmaal werd geteld) en het aantal voldoende getelde locaties (dit zijn de locaties waar het aantal tellingen werd gehaald binnen de afgesproken telperiode conform de meetnetkarakteristieken in \autoref{tab:meetnetvlinders2}).  
+\autoref{tab:tellingenvlinders} geeft ook de doelen die werden voorop gesteld voor 2016. Voor vier soorten werden de doelen gehaald of overschreden. Voor de Veldparelmoervlinder telde men één locatie minder dan gepland. 
+
+```{r overzichtTellingenvlinders, message= FALSE, warning= FALSE, results= 'asis'}
+
+tabel_vlinders <- filter(overzicht_meetnetten2,soortgroep == "vlinders")
+tabel_vlinders <- select(tabel_vlinders, -soortgroep)
+
+ tabel_vlinders[tabel_vlinders$Meetnet == "Gentiaanblauwtje",c("Bezochte locaties", "Locaties voldoende geteld")] <- 7
+
+pandoc.table(as.data.frame(tabel_vlinders), split.cells = 10,caption = "\\label{tab:tellingenvlinders} Overzicht van de tellingen in 2016 voor de vlindermeetnetten en de vooropgestelde doelen" )
+
+
+```
+
+\autoref{fig:figuurBezoekenvlinders} geeft een overzicht van de tijdstippen van de bezoeken. Voor Argusvlinder (zowel de 1ste als de 2de generatie), Heivlinder en Veldparelmoervlinder vonden er tellingen plaats na het einde van de telperiode zoals gespecificeerd in \autoref{tab:meetnetvlinders2}. De soortenexperten oordelen dat de omstandigheden toen voldoende geschikt waren om valabele tellingen uit te voeren. Het voorstel is dan ook om de telperiodes definitief uit te breiden: voor Argusvlinder tot 12 juni voor de 1ste generatie en tot 31 augustus voor de 2de generatie, voor Veldparelmoervlinder tot 15 juni en voor Heivlinder van 15 juli tot 31 augustus. De tellingen die buiten de verlengde telperiodes vallen beschouwen  we als niet conform het veldprotocol en worden dus niet meegenomen in de verdere analyse. Voor Argusvlinder valt ten slotte nog een outlier op die waarschijnlijk te wijten is aan een fout bij de invoer van de gegevens.    
+
+```{r figuurBezoekenvlinders, message= FALSE, warning= FALSE, fig.height= 5, fig.width= 6.5,  fig.cap = "\\label{fig:figuurBezoekenvlinders}Overzicht tijdstippen waarop tellingen werden uitgevoerd in 2016" }
+
+bezoeken_vlinders <- filter(bezoeken, groep == "vlinders")
+#bezoeken_vlinders$protocol <- revalue(bezoeken_vlinders$protocol, c("Padden en kikkers - Roepkoren" = "Roepkoren", "Padden en kikkers - Larven" = "Larven" ))
+bezoeken_vlinders$Meetnet_protocol <- ifelse(bezoeken_vlinders$meetnet == "Boomkikker", paste(bezoeken_vlinders$meetnet, bezoeken_vlinders$protocol,sep=" - "), as.character(bezoeken_vlinders$meetnet))
+
+ggplot(unique(select(bezoeken_vlinders,meetnet,locatie, datum,  bezoek_status)), aes(x = datum, fill = bezoek_status)) + geom_histogram(binwidth = 7) + facet_wrap( ~ meetnet, scales = "free_x", nrow = 2) + labs(x = "Datum bezoek", y = "Aantal bezoeken")  + theme( axis.text.x = element_text(angle = 90, hjust = 1))
+
+#ggplot(filter(bezoeken_vlinders, meetnet == "Argusvlinder"), aes(x = datum, fill = bezoek_status)) + geom_histogram(binwidth = 7) + facet_wrap( ~ meetnet, scales = "free_x", nrow = 2) + labs(x = "Datum bezoek", y = "Aantal bezoeken")  + theme( axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+## Verkenning van de ingevoerde gegevens
+
+### Aantallen
+
+```{r verkenningAantallenVlinders, message=FALSE, warning= FALSE, fig.width= 11, fig.height= 11}
+
+
+#figuur_aantallen(filter(aantallen_bezoek_relevant,soortgroep == "vlinders"))
+
+aantallen_vlinders <- filter(aantallen, soortgroep == "vlinders" & meetnet!="" & soort!="")
+aantallen_vlinders$sectie <- as.numeric(substring(aantallen_vlinders$sublocatie,7))
+
+aantallen_vlinders_bezoek <- summarise(group_by(aantallen_vlinders,soort,locatie,sectie),
+                                       aantalGemiddeld = mean(aantal, na.rm =TRUE),
+                                       aantalTotaal = sum(aantal, na.rm =TRUE),
+                                       aantalTellingen = n())
+
+aantallen_vlinders_bezoek$VoldoendeGeteld <- ifelse(aantallen_vlinders_bezoek$soort == "Argusvlinder",                                                 ifelse(aantallen_vlinders_bezoek$aantalTellingen >=6, "ja","nee"),                                                 ifelse(aantallen_vlinders_bezoek$aantalTellingen >=3, "ja","nee"))
+
+vlinders_transecten <- unique(aantallen[aantallen$protocol == "vlinders transecten",]$meetnet)
+```
+
+#### Aantal getelde secties per transect
+
+Voor de vlinders die via transecten worden opgevolgd verkennen we eerst het aantal 50 meter-secties per transect en het aantal tellingen per sectie. In \autoref{fig:figuurTransectenvlinders} stelt elke rij een transect voor. Elk hok geeft een sectie weer van ongeveer 50 meter. De kleur geeft aan of een sectie al dan niet voldoende werd geteld (6x voor Argusvlinder en 3x voor de andere vlinders). De transecten zijn maximaal 1 kilometer lang, maar voor kleine populaties zijn enkel korte transecten haalbaar. We zien vooral voor Heivlinder heel wat korte transecten, waarbij het kortste transect 150 meter bedraagt. Verder zien we dat voor Argusvlinder en Heivlinder al enkele transecten werden vastgelegd die nog niet voldoende geteld werden. Deze zullen nog geteld moeten worden in 2017 of 2018. We zien ook transecten die deels voldoende en deels onvoldoende geteld werden. Het is belangrijk dat in dergelijke gevallen goed wordt bijgehouden waarom bepaalde secties minder vaak werden geteld.         
+
+```{r verkenningAantallenVlinders2, message=FALSE, warning= FALSE, fig.width= 6, fig.height= 6, fig.cap = "\\label{fig:figuurTransectenvlinders}Aantal getelde secties voor de verschillende vlindertransecten" }
+
+
+
+ggplot(filter(aantallen_vlinders_bezoek, soort!= "Gentiaanblauwtje"), aes(x= sectie, y = factor(locatie), fill = VoldoendeGeteld)) + geom_tile(colour = "black" ) + facet_wrap(~ soort, scales = "free", ncol = 2 ) + labs (x = "Sectienummer", y = "Transecten") + theme(axis.text.y=element_blank(),axis.ticks.y=element_blank() , legend.position = "bottom")
+
+```
+
+
+#### Overzicht totale aantallen per bezoek
+
+
+```{r verkenningAantallenVlinders3, message=FALSE, warning= FALSE, fig.width= 5, fig.height= 5}
+
+
+aantallen_vlinders_locatie <- summarise(group_by(aantallen_vlinders,meetnet,protocol,locatie,datum, taak, bezoek_status),
+                                       aantalGemiddeld = mean(aantal, na.rm =TRUE),
+                                       aantalTotaal = sum(aantal, na.rm =TRUE),
+                                       aantalSectiesGeteld = sum(!is.na(aantal)),
+                                       aantalPerKilometer =mean(aantal, na.rm =TRUE) * 20)
+
+aantallen_vlinders_locatie$Nulwaarneming <- ifelse(aantallen_vlinders_locatie$aantalTotaal == 0, "Ja", "Nee" )                                     
+
+aantallen_vlinders_locatie$taak <- revalue(aantallen_vlinders_locatie$taak, c("Veldbezoek 1" = "Transecttelling 1",
+                                                                              "Veldbezoek 2" = "Transecttelling 2",
+                                                                              "Veldbezoek 3" = "Transecttelling 3",
+                                                                              "Veldbezoek 4" = "Transecttelling 4",
+                                                                              "Veldbezoek 4 (optioneel)" = "Extra telling",
+                                                                              "Veldbezoek 5" = "Transecttelling 5",
+                                                                              "Veldbezoek 6" = "Transecttelling 6"
+                                                                              ))
+#unique(aantallen_vlinders_locatie$taak)
+```
+
+\autoref{fig:figuurAantallenVlinders1} toont de verdeling van de getelde aantallen. Voor de transecttellingen gaat het over het totaal getelde aantal per bezoek over alle secties van het transect. Voor de eitetellingen gaat het over het totaal getelde aantal per proefvlak. Wat opvalt is het grote aantal nulwaarnemingen voor Argusvlinder waardoor er slechts gemiddeld (ongeveer) twee individuen wordt geteld per bezoek. Ook voor Kommavlinder zien we een relatief groot aantal nulwaarnemingen. Algemeen zien we een grote spreiding (variantie) van de getelde aantallen. Ook opvallend is de telling van meer dan 100 individuen van Veldparelmoervlinder.
+
+```{r figuurAantallenVlinders1, message=FALSE, warning= FALSE, fig.width= 5, fig.height= 6, fig.cap= "\\label{fig:figuurAantallenVlinders1}Totaal getelde aantallen per bezoek"}
+
+figuur_aantallen(data = filter(aantallen_bezoek_relevant, soortgroep == "vlinders"),legend_position = "bottom")
+
+```
+
+\autoref{fig:figuurAantallenVlinders2} en \autoref{fig:figuurAantallenVlinders3} geven de evolutie van de getelde aantallen binnen het seizoen. In \autoref{fig:figuurAantallenVlinders2} worden tellingen van eenzelfde locatie verbonden met een stippellijn. De blauwe lijn in \autoref{fig:figuurAantallenVlinders3} toont de gemiddelde evolutie binnen het seizoen, waarbij de grijze banden aan beide kanten van de blauwe lijn de onzekerheid aangeven op deze gemiddelde evolutie. De grootte van de punten geeft het aantal getelde secties per transect weer.
+
+```{r figuurAantallenVlinders2, message=FALSE, warning= FALSE, fig.width= 6, fig.height= 6, fig.cap= "\\label{fig:figuurAantallenVlinders2}Totaal getelde aantallen per bezoek"}
+ggplot(filter(aantallen_vlinders_locatie, meetnet !="Gentiaanblauwtje"), aes(x = datum, y = aantalTotaal,  group= locatie, colour = Nulwaarneming)) + geom_point(alpha = 0.6) +  geom_line(linetype = 2, colour = "black" , alpha =0.3, size = 0.4)  + facet_wrap(~ meetnet, scales = "free") + labs(x = "Datum bezoek", y = "Totaal aantal per transect") + theme(legend.position = "bottom")
+```
+
+
+```{r figuurAantallenVlinders3, message=FALSE, warning= FALSE, fig.width= 6, fig.height= 6, fig.cap= "\\label{fig:figuurAantallenVlinders3}Totaal getelde aantallen per bezoek"}
+ggplot(filter(aantallen_vlinders_locatie, meetnet !="Gentiaanblauwtje"), aes(x = datum, y = aantalTotaal, colour = Nulwaarneming)) + geom_point(alpha = 0.6)  + facet_wrap(~ meetnet, scales = "free") + geom_smooth(method = "gam", method.args = list(family = poisson),formula = y ~ s(x, bs = "cs", k = 6) , size = 0.4, colour = "blue") + labs(x = "Datum bezoek", y = "Totaal aantal per transect" ) + theme(legend.position = "bottom") 
+```
+
+Algemeen zien we binnen eenzelfde locatie grote variaties in getelde aantallen. Voor Argusvlinder en Veldparelmoervlinder zien we dat de meeste locaties een gelijkaardige evolutie in getelde aantallen vertonen. Dit is veel minder het geval bij Heivlinder en Kommavlinder. Voor Argusvlinder zien we dan ook twee duidelijke pieken: midden mei voor de eerste generatie en begin augustus voor de tweede generatie. Voor Veldparelmoervlinder zien we een piek in de tweede helft van mei. Verder blijkt dat een verlenging van de telperiode voor Argusvlinder enkel nulwaarnemingen opgeleverd heeft in 2016. In dat opzicht is de verlenging niet aan te bevelen. Ten slotte zien we dat korte transecten niet per definitie lagere getelde aantallen opleveren. Voor Heivlinder zien we bijvoorbeeld een telling van 52 individuen voor een transect bestaande uit drie secties, ver boven het gemiddelde van ongeveer 15 getelde individuen per transect.      
+
+\autoref{fig:figuurAantallenGentinaanblauwtje} toont de verdeling van het aantal getelde eitjes van Gentiaanblauwtje per knop. Het merendeel van de knoppen bevat geen eitjes. Het maximaal aantal eitjes per knop bedraagt 15.   
+
+```{r figuurAantallenGentinaanblauwtje, message=FALSE, warning= FALSE, fig.width= 4, fig.height= 4, fig.cap= "\\label{fig:figuurAantallenGentinaanblauwtje}Totaal getelde aantallen per bezoek"}
+
+#ggplot(filter(aantallen_vlinders, meetnet =="Gentiaanblauwtje"), aes (y = aantal, x = taak)) + geom_jitter(alpha =0.7, colour = "black") + facet_wrap(~ locatie, scales = "free_x", nrow = 3)
+
+aantallen_gb <- filter(aantallen, meetnet == "Gentiaanblauwtje")
+
+ggplot(filter(aantallen_vlinders, meetnet =="Gentiaanblauwtje"), aes (x = aantal)) + geom_histogram(binwidth = 1, colour = "white") + labs(x = "Aantal eitjes van Gentiaanvlauwtje per knop", y = "Aantal tellingen")
+
+#ggplot(filter(aantallen_vlinders, meetnet =="Gentiaanblauwtje", aantal >0), aes (x = factor(aantal))) + geom_bar() + labs(x = "Aantal eitjes per knop", y = "Aantal tellingen")
+
+```
+
+## Wijzigingen monitoringprotocol
+
+
+**Grote weerschijnvlinder**
+
+* Wijziging veldprotocol: omdat de detectiekans van de Grote weerschijvlinder zeer laag is wordt besloten om de telmethode te wijzigen van een transecttelling naar een gebiedstelling waarbij een afgelijnd gebied volledig wordt onderzocht en het maximaal getelde aantal dieren dat tegelijker tijd wordt waargenomen, wordt genoteerd. In het voorjaar 2017 zal deze telmethode worden uitgetest.
+
+**Bruine eikenpage**
+
+* Wijzigiging meetcyclus: de werklast van de eitelling van Bruine eikenpage is zeer groot, waardoor het mogelijks noodzakelijk zal zijn om de telling van de locaties te verdelen over een tweejarige cyclus. Eind 2017 zal veldprotocol verder uitgetest worden. Op basis daarvan zal een beslissing genomen worden over de meetcyclus.
+
+## Opstart nieuwe meetnetten in 2017
+
+In 2017 zullen volgende meetnetten worden opgestart:
+
+* Oranje zandoogje 
+* Klaverblauwtje 
+* Aardbeivlinder
+* Bruin dikkopje
+
+# Zoogdieren
+
+## Meetnetkarakteristieken
+
+\autoref{tab:meetnetzoogdieren1} en \autoref{tab:meetnetzoogdieren2} geven een overzicht van de karakteristieken van de zoogdiermeetnetten die in 2016 van start gingen (De Bruyn *et al.* 2017).
+
+
+
+```{r meetnettenzoogdieren, message= FALSE, warning= FALSE, results= 'asis'}
+
+
+meetnet_zoogdieren <- filter(meetnetKarakt, Meetnet %in% c("Hazelmuis", "Das", "Hamster"))
+
+meetnet_zoogdieren$Begin_telperiode <- as.character(meetnet_zoogdieren$Begin_telperiode)
+meetnet_zoogdieren$Einde_telperiode <- as.character(meetnet_zoogdieren$Einde_telperiode)
+
+meetnet_zoogdieren[meetnet_zoogdieren$Meetnet == "Hamster",]$Begin_telperiode <- "Na oogst van graan"
+meetnet_zoogdieren[meetnet_zoogdieren$Meetnet == "Hamster",]$Einde_telperiode <- "Voor ploegen van akker"
+
+meetnet_zoogdieren <- rename(meetnet_zoogdieren, 'Begin telperiode' = Begin_telperiode, 'Einde telperiode' = Einde_telperiode, 'Meetcyclus (jaar)'= Meetcyclus, 'Bezoeken (/jaar)' = Bezoeken)
+
+pandoc.table(select(meetnet_zoogdieren,1:5),split.cells = 10, caption = "\\label{tab:meetnetzoogdieren1} Overzicht van de karakteristieken van de zoogdiermeetnetten: veldprotocol, type meetnet (integraal of steekproef), aantal meetnetlocaties en de meetcyclus in jaren" )
+
+pandoc.table(select(meetnet_zoogdieren, 1:2,7:9), split.cells = 10,  caption = "\\label{tab:meetnetzoogdieren2} Overzicht van de karakteristieken van de zoogdiermeetnetten: aantal bezoeken per jaar, begin en einde van de telperiode" )
+
+
+```
+
+
+## Overzicht van de uitgevoerde tellingen
+
+\autoref{tab:tellingenzoogdieren} geeft een overzicht van de uitgevoerde tellingen in 2016. In de tabel onderscheiden we het aantal bezochte locaties (dit zijn locaties waar minstens eenmaal werd geteld) en het aantal voldoende getelde locaties (dit zijn de locaties waar het aantal tellingen werd gehaald binnen de afgesproken telperiode conform de meetnetkarakteristieken in \autoref{tab:meetnetzoogdieren2}).  
+
+\autoref{tab:tellingenzoogdieren} geeft ook de doelen die werden voorop gesteld voor 2016. Voor alle soorten werden de doelen gehaald.
+
+```{r overzichtTellingenzoogdieren, message= FALSE, warning= FALSE, results= 'asis'}
+
+
+tabel_zoogdieren <- filter(overzicht_meetnetten2,soortgroep == "zoogdieren")
+tabel_zoogdieren <- select(tabel_zoogdieren, -soortgroep)
+
+tabel_zoogdieren$'Oppervlakte geteld (Ha)' <- ifelse(tabel_zoogdieren$Meetnet == "Hamster", sum(data_hamster$oppervlakte), NA)
+
+tabel_zoogdieren <- select(tabel_zoogdieren, 1:5, 7, 6)
+
+pandoc.table(as.data.frame(tabel_zoogdieren), split.cells = 10,caption = "\\label{tab:tellingenzoogdieren} Overzicht van de tellingen in 2016 voor de zoogdiermeetnetten en de vooropgestelde doelen", missing = "nvt" )
+
+
+```
+
+\autoref{fig:figuurBezoekenZoogdieren} toont de tijdstippen van de bezoeken voor Hazelmuis en Hamster. Alle bezoeken vallen binnen de afgesproken telperiode. Voor de Das werden de tijdstippen van de bezoeken aan de burchten niet aangeleverd. Deze tijdstippen zijn echter minder van belang, gezien een beoordeling van een dassenburcht in principe het hele jaar door kan gebeuren. De telperiode in \autoref{tab:meetnetzoogdieren2} geeft de aanbevolen telperiode weer voor de Das. Maar deze is dus niet heel strikt te volgen. 
+
+```{r overzichtBezoekenzoogdieren, message= FALSE, warning= FALSE, fig.width= 5, fig.height= 4, fig.cap = "\\label{fig:figuurBezoekenZoogdieren} Overzicht tijdstippen waarop tellingen werden uitgevoerd in 2016" }
+
+bezoeken_hazelmuis <- filter(bezoeken, meetnet == "Hazelmuis")
+
+data_hamster$meetnet <- "Hamster"
+data_hamster$bezoek_status <- "Conform protocol"
+bezoeken_hamster <- select(data_hamster,meetnet,datum, locatie = Locatienaam, bezoek_status)
+
+bezoeken_zoogdieren <- rbind(select(bezoeken_hazelmuis, meetnet, datum, locatie, bezoek_status), bezoeken_hamster)
+
+ggplot(bezoeken_zoogdieren, aes(x = datum, fill = bezoek_status )) + geom_bar(binwidth = 7, colour= "white") + facet_wrap(~meetnet, scales = "free_x") + labs(x = "Datum bezoek", y = "Aantal bezoeken") + theme(legend.position = "bottom", axis.text.x = element_text(angle = 90)) + ylim(0,11)
+
+```
+
+
+## Ingevoerde gegevens
+
+### Hazelmuis
+
+```{r verkenningAantallenHazelmuis3, message=FALSE, warning= FALSE}
+
+
+#figuur_aantallen(filter(aantallen_bezoek_relevant,soortgroep == "amfibieën"))
+
+aantallen_hazelmuis <- filter(aantallen,  meetnet=="Hazelmuis" )
+
+aantallen_hazelmuis_wide <- spread(filter(aantallen_hazelmuis, taak != "Extra telling"),key = activiteit ,value = aantal )
+
+covariabelen_hazelmuis <- filter(covariabelen, meetnet == "Hazelmuis")
+covariabelen_hazelmuis$bezoekvariabele <- as.character(covariabelen_hazelmuis$bezoekvariabele)
+covariabelen_hazelmuis$waarde <- as.numeric(as.character(covariabelen_hazelmuis$waarde))
+
+covariabelen_hazelmuis_wide <- spread(select(covariabelen_hazelmuis, -eenheid), key = bezoekvariabele, value = waarde)
+
+
+aantallen_hazelmuis <- summarise(group_by(aantallen_hazelmuis_wide,locatie, datum, visit_id,
+                                          aantal_netto = nest - `nest (hervondst)`,
+                                          aantal_totaal = nest,
+                                          aantal_hervondst = `nest (hervondst)`))
+
+aantallen_hazelmuis_cov <- left_join(aantallen_hazelmuis, covariabelen_hazelmuis_wide, by = "visit_id")
+```
+
+\autoref{fig:figuurAantallenHazelmuis1} en \autoref{fig:figuurAantallenHazelmuis2} geven de evolutie van de getelde aantallen binnen het seizoen. In \autoref{fig:figuurAantallenHazelmuis1} worden tellingen van eenzelfde locatie verbonden met een stippellijn. De blauwe lijn in \autoref{fig:figuurAantallenHazelmuis2} toont de gemiddelde evolutie binnen het seizoen, waarbij de grijze banden aan beide kanten van de blauwe lijn de onzekerheid aangeven op deze gemiddelde evolutie. De grootte van de punten is proportioneel aan de lengte van het transect.
+
+```{r figuurAantallenHazelmuis1, message=FALSE, warning= FALSE,fig.width= 5, fig.height= 3.5, fig.cap ="\\label{fig:figuurAantallenHazelmuis1} Aantal getelde hazelmuisnesten per bezoek; tellingen op eenzelfde locatie worden verbonden met een stippellijn; voor een tweede of derde bezoek wordt het aantal nieuwe gevonden nesten weergegeven"  }
+
+ggplot(aantallen_hazelmuis_cov, aes(x= datum, y = aantal_netto, group = locatie, size = `Lengte transect` )) + geom_point(alpha = 0.8) +  geom_line(linetype = 2, colour = "black" , alpha =0.3, size = 0.4) + scale_colour_hue(l=80, c=150) + theme( axis.text.x = element_text(angle = 90)) + labs (x = "Datum bezoek",y= "Aantal (nieuw) getelde nesten")
+
+```
+
+```{r figuurAantallenHazelmuis2, message=FALSE, warning= FALSE, fig.width= 5, fig.height= 3.5, fig.cap ="\\label{fig:figuurAantallenHazelmuis2}Aantal getelde hazelmuisnesten per bezoek en de globale evolutie in getelde aantallen binnen het telseizoen (blauwe lijn)"  }
+
+ggplot(aantallen_hazelmuis_cov, aes(x= datum, y = aantal_netto,  size = `Lengte transect` )) + geom_point(alpha = 0.6) + geom_smooth(method = "gam", method.args = list(family = poisson),formula = y ~ s(x, bs = "cs", k = 6) ,size = 0.4, colour = "blue") + labs (x = "Datum bezoek",y= "Aantal (nieuw) getelde nesten")
+```
+
+Het aantal tellers per bezoek varieert van één tot vier. Het aatal tellers kan een impact hebben op de detectiekans van de nesten. \autoref{fig:figuurAantallenHazelmuis3} geeft de relatie tussen het aantal tellers en het aantal getelde nesten. We zien dat als er maar één teller is, er geen grote aantallen  wordengeteld (> 4). Het is echter nog te vroeg om hier conclusies uit te trekken.
+
+```{r figuurAantallenHazelmuis3, message=FALSE, fig.width= 5, fig.height= 3.5, warning= FALSE, fig.cap = "\\label{fig:figuurAantallenHazelmuis3}Relatie tussen aantal getelde hazelmuisnesten en aantal tellers"  }
+
+ggplot(aantallen_hazelmuis_cov, aes(x= `Aantal tellers`, y = aantal_netto, size = `Lengte transect`  )) + geom_point(alpha = 0.5) +  geom_smooth(method = "gam", method.args = list(family = poisson),formula = y ~ s(x, bs = "cs", k = 6) ,size = 0.4, colour = "blue") + labs (y= "Aantal getelde nesten")
+```
+
+
+
+\FloatBarrier
+
+### Hamster
+
+In totaal vonden vrijwilligers 24 burchten, werd er 82,84 hectare afgezocht en werden er 168 manuren gezocht naar burchten. 
+
+### Das
+
+Meetnetdata van das worden niet in meetnetten.be ingevoerd, maar in de databank van de Dassenwerkgroep van LIKONA, en als dataset aan INBO aangeleverd.
+
+```{r das, message= FALSE, warning= FALSE}
+
+
+aantal_burchten <- summarise(group_by(data_das,Gebied),
+                            nBurchten = n_distinct(burchtID))
+
+data_das_burcht <- summarise(group_by(data_das,Gebied, burchtID),
+                            nBezoeken = n(),
+                            nVerschillen = n_distinct(status, bewoning),
+                            status_burcht = ifelse("Hoofdburcht" %in% status, "Hoofdburcht",
+                                                   ifelse ("Bijburcht" %in% status, "Bijburcht",
+                                                           ifelse("Verdwenen" %in% status, "Verdwenen", "Ongekend"))),
+                            bewoning_burcht = ifelse("Bewoond" %in% bewoning, "Bewoond", 
+                                                     ifelse("Niet_bewoond" %in% bewoning, "Niet_bewoond", "Ongekend")))
+
+```
+
+\autoref{fig:figuurDas} geeft een overzicht van de onderzochte burchten.  
+
+```{r verkenningDataDas, message= FALSE, warning= FALSE, fig.width = 7, fig.cap ="\\label{fig:figuurDas} Overzicht van onderzochte burchten in 2016" }
+
+ggplot(data_das_burcht, aes(x= status_burcht, fill = bewoning_burcht)) + geom_bar() + facet_grid(. ~ Gebied ) + labs(y = "Aantal" , x = "Status burcht", fill = "Bewoning burcht") +  theme( axis.text.x = element_text(angle = 90))
+
+```
+
+
+\FloatBarrier
+
+## Wijziging monitoringprotocol
+
+Geen wijzigingen.
+
+## Opstart nieuwe meetnetten in 2017
+
+Geen nieuwe meetnetten in 2017.
+
+# Vaatplanten
+
+## Meetnetkarakteristieken
+
+\autoref{tab:meetnetplanten1} en \autoref{tab:meetnetplanten2} geven een overzicht van de karakteristieken van de vaatplantenrmeetnetten die in 2016 van start gingen (Van Landuyt *et al.* 2015).
+
+```{r meetnetkaraktPlanten, message= FALSE, warning= FALSE, results= 'asis'}
+
+planten <- werkpaketten %>% 
+  filter(soortgroep == "planten") %>%
+  select(meetnet) %>%
+  unique()
+  
+meetnet_planten <- filter(meetnetKarakt, Meetnet %in% planten$meetnet)
+meetnet_planten <- select(meetnet_planten,-Generatie)
+
+meetnet_planten <- rename(meetnet_planten, 'Begin telperiode' = Begin_telperiode, 'Einde telperiode' = Einde_telperiode, 'Meetcyclus (jaar)'= Meetcyclus, 'Bezoeken (/jaar)' = Bezoeken)
+
+pandoc.table(as.data.frame(select(meetnet_planten, 1:5)),split.cells = 10,caption = "\\label{tab:meetnetplanten1} Overzicht van de karakteristieken van de plantenmeetnetten: veldprotocol, type meetnet (integraal of steekproef), aantal meetnetlocaties en de meetcyclus in jaren; wijzigingen t.o.v. het protocol worden in het vet weergegeven" )
+
+pandoc.table(as.data.frame(select(meetnet_planten, 1,6:8)), split.cells = 10, caption = "\\label{tab:meetnetplanten2} Overzicht van de karakteristieken van de plantenmeetnetten: aantal bezoeken per jaar, begin en einde van de telperiode" )
+```
+
+
+```{r overzichtTellingenPlanten, message= FALSE, warning= FALSE, results= 'asis'}
+
+# tabel_planten <- filter(overzicht_meetnetten2,soortgroep == "planten")
+# tabel_planten <- select(tabel_planten, -soortgroep)
+# 
+# kable(tabel_planten, split.cells = 10,caption = "\\label{tab:tellingenplanten} Overzicht van de tellingen in 2016 voor de plantenmeetnetten en de vooropgestelde doelen" )
+
+
+```
+
+
+## Overzicht van de uitgevoerde tellingen
+
+Het monitoringprotocol stelt dat binnen een locatie de geschikte leefgebieden systematisch afgezocht worden en dat op elk punt waar de soort wordt aangetroffen een schatting van het aantal individuen of de oppervlakte van de groeiplaats wordt gemaakt gebruik makend van de FLORON schaal. Het gevolgde traject moet geregistreerd worden met GPS. \autoref{tab:tellingenplanten} geeft een overzicht van de uitgevoerde tellingenen geeft per meetnet het aantal locaties waarin een observatie gebeurde gebruik makend van de FLORON schaal, het totaal aantal observaties en het aantal locaties waarvoor het traject werd geregistreerd. Een deel van de locaties worden door het INBO opgevolgd in kader van het project 'Permanente Inventarisatie van de Kust' (PINK). Als doel voor 2016 geldt dat 1/3 van alle plantenlocaties geteld moesten worden. Dit komt overeen met 93 locaties. Het aantal getelde locaties werd gehaald, maar er werd slechts voor een beperkt aantal locaties trajecten geregistreerd. Het aantal observaties zijn vaak redelijk beperkt, zeker als we de observaties uitgevoerd door vrijwilligers vergelijken met deze uitgevoerd door het INBO. Doordat trajecten vaak ontbreken is het echter moeilijk om te evalueren of een locatie voldoende werd doorzocht.   
+
+
+
+```{r verkenningPINK, message= FALSE, warning= FALSE, results='hide'}
+library(rgdal)
+observaties_PINK <- read.csv2("Data/Planten/DataPINK.csv")
+
+observaties_PINK$meetnet <- ifelse(observaties_PINK$SOORTSCODE == "gentnuli", "Duingentiaan",
+                                   ifelse(observaties_PINK$SOORTSCODE == "hermimon", "Honingorchis",NA))
+
+
+observaties_PINK <- select(observaties_PINK, meetnet, Abundantie = ABUNDANTIE, Datum, waarnemer = WAARNEMER1 , X_PROJ, Y_PROJ )
+
+observaties_PINK <- filter(observaties_PINK, !is.na(meetnet))
+
+observaties_PINK_Shape <- SpatialPointsDataFrame(coords= cbind(observaties_PINK$X_PROJ,observaties_PINK$Y_PROJ), data = observaties_PINK)
+
+ifbl_kwartier <- readOGR("Data/Planten/.","ifblkwart", verbose = FALSE)
+
+proj4string(observaties_PINK_Shape) <- proj4string(ifbl_kwartier)
+
+observaties_PINK_Shape$ifbl_tag <- over(observaties_PINK_Shape,ifbl_kwartier)$TAG
+
+observaties_PINK2 <- observaties_PINK_Shape@data 
+observaties_PINK2$uitvoerder <- "INBO"
+observaties_PINK2$traject <- "Tracks"
+#write.csv2(observaties_PINK2, "Output/Data_planten_PINK.csv")
+
+
+overzicht_PINK <- summarise(group_by(observaties_PINK2, meetnet, ifbl_tag, uitvoerder, traject ),
+                            nObs = n_distinct(X_PROJ, Y_PROJ))
+                            
+
+
+
+```
+
+
+```{r dataPlanten, message= FALSE, warning= FALSE, results = 'asis'}
+
+PINK_locaties <- read.csv2("Data/Planten/PINK_locaties.csv")
+PINK_locaties$Locatie <- as.character(PINK_locaties$Locatie)
+PINK_locaties$ifbl_tag <- substr(PINK_locaties$Locatie, nchar(PINK_locaties$Locatie) - 8, nchar(PINK_locaties$Locatie) - 1)
+
+locaties_planten <- werkpaketten %>%
+  filter(soortgroep == "planten") %>%
+  select( meetnet, locatie) %>%
+  unique()
+
+locaties_planten$locatie <- as.character(locaties_planten$locatie)
+locaties_planten$ifbl_tag <- substr(locaties_planten$locatie, nchar(locaties_planten$locatie) - 8, nchar(locaties_planten$locatie) - 1)
+locaties_planten$type <- "inMeetnet"
+
+data_ruw <- read.csv2("Data/Planten/Versie2017-01-30/Definitievedataplantenmeetnet2016.csv")
+trajecten <- read.csv2("Data/Planten/Overzicht_tracks.csv")
+trajecten$locatie <- as.character(trajecten$locatie )
+trajecten$ifbl_tag <- substr(trajecten$locatie, nchar(trajecten$locatie) - 8, nchar(trajecten$locatie) - 1) 
+
+data_planten <- select(data_ruw, id, meetnet = naam_nl, datum, aantal, Floron.code, wnr, x, y, ifbl_tag, status, typewaarneming, precisie)
+data_planten$uitvoerder <- "vrijwilligers"
+
+data_planten_locatie <- data_planten %>%
+  group_by(meetnet, ifbl_tag, uitvoerder) %>%
+  summarise(nObs = n_distinct(x,y))
+
+data_planten_locatie <- full_join(data_planten_locatie, select(trajecten, -locatie), by =c("meetnet", "ifbl_tag"))
+
+#unique(sort(data_planten_locatie$ifbl_tag))
+
+# bezoeken_planten <- filter(bezoeken, groep == "planten")
+# 
+# bezoeken_planten_mn <- summarise(group_by(bezoeken_planten,meetnet,locatie),
+#                                  bezoek_CP = sum(bezoek_status == "Conform protocol") > 0)
+# 
+# bezoeken_planten_mn$locatie <- as.character(bezoeken_planten_mn$locatie)
+# 
+# bezoeken_planten_mn$ifbl_tag <- substr(bezoeken_planten_mn$locatie, nchar(bezoeken_planten_mn$locatie) - 8, nchar(bezoeken_planten_mn$locatie) - 1)
+
+# bezoeken_planten_mn <- bezoeken_planten_mn %>%
+#   filter( bezoek_CP == 1 ) %>%
+#   unique()
+
+bezoeken_planten_NP <- read.csv2("Data/Planten/Versie2017-01-30/Overzicht_Plantenmeetnet_2016.csv") 
+bezoeken_planten_NP$locatie <- as.character(bezoeken_planten_NP$Naam.locatie)
+bezoeken_planten_NP$ifbl_tag <- substr(bezoeken_planten_NP$locatie, nchar(bezoeken_planten_NP$locatie) - 8, nchar(bezoeken_planten_NP$locatie) - 1)
+bezoeken_planten_NP <- rename(bezoeken_planten_NP, meetnet = Soortnaam)
+bezoeken_planten_NP$lijstLocaties_CP <- 1
+
+
+overzicht_locaties <- rbind(data_planten_locatie, overzicht_PINK)
+overzicht_locaties_alle <- full_join(locaties_planten, overzicht_locaties, by =c("meetnet", "ifbl_tag"))
+
+overzicht_locaties_alle <- full_join(overzicht_locaties_alle, select(bezoeken_planten_NP,meetnet,ifbl_tag,locatie,lijstLocaties_CP), by = c("meetnet", "ifbl_tag", "locatie"))
+
+
+overzicht_locaties_alle$type <- ifelse(is.na(overzicht_locaties_alle$type), "nieuweLocatie" ,overzicht_locaties_alle$type)
+overzicht_locaties_alle$nObs <- ifelse(is.na(overzicht_locaties_alle$nObs), 0 ,overzicht_locaties_alle$nObs)
+overzicht_locaties_alle$lijstLocaties_CP <- ifelse(is.na(overzicht_locaties_alle$lijstLocaties_CP), 0, overzicht_locaties_alle$lijstLocaties_CP) 
+
+data_ontbrekend <- overzicht_locaties_alle %>%
+  filter(nObs == 0 & lijstLocaties_CP ==1)
+
+locaties_ontbrekend <- overzicht_locaties_alle %>%
+  filter(nObs == 0  & lijstLocaties_CP ==0 & type == "inMeetnet")
+
+overzicht_planten <- overzicht_locaties_alle %>%
+  filter(!is.na(uitvoerder)) %>%
+  group_by(meetnet, type, uitvoerder) %>%
+  summarise(nLocaties = sum(nObs >0),
+            nObs = sum(nObs),
+            nLocaties_Traject = sum( traject %in% c("Tracks","Kaart"),na.rm = TRUE))
+
+overzicht_planten$Doel2016 <- NA
+
+# overzicht_planten_totaal <- overzicht_planten %>%
+#   select(meetnet, type, nLocatiesTotaal) %>%
+#   spread(key = type, value = nLocatiesTotaal, fill =0)
+
+# totMeetnet <- sum(overzicht_planten_totaal$inMeetnet)
+# totNieuw <- sum(overzicht_planten_totaal$nieuweLocatie)
+
+overzicht_planten %>%
+  filter(type == "inMeetnet") %>%
+  ungroup() %>%
+  select(-type) %>%
+  bind_rows(data.frame(meetnet = "Totaal",
+                       uitvoerder = "alle",
+                       nLocaties = sum(overzicht_planten[overzicht_planten$type == "inMeetnet",]$nLocaties),
+                       nLocaties_Traject = sum(overzicht_planten[overzicht_planten$type == "inMeetnet",]$nLocaties_Traject),
+                       nObs =  sum(overzicht_planten[overzicht_planten$type == "inMeetnet",]$nObs),
+                       Doel2016 = 93)) %>%
+  rename("aantal locaties" = nLocaties,
+         "aantal locaties met traject" = nLocaties_Traject,
+         "aantal observaties" = nObs ) %>%
+  as.data.frame() %>%
+  pandoc.table(split.cells = 10, caption = "\\label{tab:tellingenplanten} Overzicht van het aantal locaties die werden geteld en het aantal observaties per meetnet in 2016 voor de plantenmeetnetten", missing = "nvt")
+
+
+
+```
+
+## Ingevoerde gegevens
+
+\autoref{fig:figFLORON} toont de geobserveerde aantallen of oppervlaktes uitgedrukt in de FLORON schaal (\autoref{tab:FLORON}) voor de verschillende vaatplantenmeetnetten. 
+
+```{r aantallenPlanten, message= FALSE, warning= FALSE, results = 'asis'}
+observaties_PINK <- observaties_PINK2 %>%
+  select(meetnet, "FLORONcode" = Abundantie, ifbl_tag, uitvoerder)
+observaties_PINK$FLORONcode <- toupper(observaties_PINK$FLORONcode)
+
+observaties_NP <- data_planten %>%
+  select(meetnet, "FLORONcode" = Floron.code, ifbl_tag, uitvoerder)
+
+observaties_alle <- bind_rows(observaties_PINK, observaties_NP)
+
+planten_meetvariabelen <- read.csv2("Data/Planten/PlantenMeetvariabelen.csv")
+planten_meetvariabelen <- rename(planten_meetvariabelen, meetnet = Meetnet, meetvariabele = Meetvariabele)
+
+observaties_alle <- left_join(observaties_alle, planten_meetvariabelen, by ="meetnet")
+
+FLORON <- read.csv2("Data/Planten/FLORON.csv")
+FLORON %>%
+  rename("Aantal individuen" = Aantal_individuen, "Oppervlakte groeiplaats (m²)" = Oppervlakte_groeiplaats_m2 ) %>%
+  as.data.frame() %>%
+  pandoc.table(caption="\\label{tab:FLORON} FLORON schaal")
+
+```
+
+
+
+```{r figaantallenPlanten, message= FALSE, warning= FALSE, fig.height=9, fig.width = 6.5, fig.cap = "\\label{fig:figFLORON}Observaties vaatplantenmeetnetten"}
+observaties_alle %>%
+  filter(FLORONcode %in% c("A","B","C","D","E","F","0")) %>%
+  ggplot(aes(x=FLORONcode, fill = meetvariabele)) + geom_bar() + facet_wrap(~ meetnet, scales = "free_y", ncol = 4) + theme(legend.position= "bottom", strip.text = element_text(size=8))
+
+```
+
+## Wijziging monitoringprotocol
+
+* Schrappen meetnetlocaties: \autoref{tab:schrappen} geeft een overzicht van de te schrappen locaties. In deze locaties komt de doelsoort niet meer voor.
+
+```{r schrappen, results = 'asis'} 
+locaties_schrappen <- read.csv2("data/planten/teschrappenlocaties2016.csv")
+pandoc.table(locaties_schrappen, caption = "\\label{tab:schrappen} Te schrappen locaties voor vaatplantenmeetnetten")
+```
+
+## Opstart nieuwe meetnetten in 2017
+
+Alle meetnetten werden reeds opgestart in 2016
+
+# Overige soortengroepen
+
+## Meetnetkarakteristieken
+
+\autoref{tab:meetnetoverige1} en \autoref{tab:meetnetoverige2} geven een overzicht van de karakteristieken van het meetnet voor de Zadelsprinkhaan (De Knijf *et al.* 2016) en het meetnet voor Lentevuurspin (Van Keer *et al.* 2016). Beide meetnetten werden die in 2016 opgestart. 
+
+
+```{r meetnettenoverige, message= FALSE, warning= FALSE, results= 'asis'}
+
+meetnet_overige <- filter(meetnetKarakt, Meetnet %in% c("Zadelsprinkhaan", "Lentevuurspin"))
+
+meetnet_overige$Begin_telperiode <- as.character(meetnet_overige$Begin_telperiode)
+meetnet_overige$Einde_telperiode <- as.character(meetnet_overige$Einde_telperiode)
+
+meetnet_overige <- rename(meetnet_overige, 'Begin telperiode' = Begin_telperiode, 'Einde telperiode' = Einde_telperiode, 'Meetcyclus (jaar)'= Meetcyclus, 'Bezoeken (/jaar)' = Bezoeken)
+
+pandoc.table(as.data.frame(select(meetnet_overige,1:5)),split.cells = 10, caption = "\\label{tab:meetnetoverige1} Overzicht van de karakteristieken van de meetnetten voor de Zadelsprinkhaan en de Lentevuurspin: veldprotocol, type meetnet (integraal of steekproef), aantal meetnetlocaties en de meetcyclus in jaren" )
+
+pandoc.table(as.data.frame(select(meetnet_overige, 1:2,7:9)), split.cells = 10,  caption = "\\label{tab:meetnetoverige2} Overzicht van de karakteristieken van de meetnetten voor de Zadelsprinkhaan en de Lentevuurspin: aantal bezoeken per jaar, begin en einde van de telperiode" )
+
+
+```
+
+
+## Overzicht van de uitgevoerde tellingen
+
+\autoref{tab:tellingenoverige} geeft een overzicht van de uitgevoerde tellingen in 2016. In de tabel onderscheiden we het aantal bezochte locaties (dit zijn locaties waar minstens eenmaal werd geteld) en het aantal voldoende getelde locaties (dit zijn de locaties waar het aantal tellingen werd gehaald binnen de afgesproken telperiode conform de meetnetkarakteristieken in \autoref{tab:meetnetoverige2}).  
+
+\autoref{tab:tellingenoverige} geeft ook de doelen die werden voorop gesteld voor 2016. Voor alle soorten werden de doelen gehaald.
+
+```{r overzichtTellingenoverige, message= FALSE, warning= FALSE, results= 'asis'}
+
+
+tabel_overige <- filter(overzicht_meetnetten2,soortgroep == "overige")
+tabel_overige <- select(tabel_overige, -soortgroep)
+
+pandoc.table(as.data.frame(tabel_overige), split.cells = 10,caption = "\\label{tab:tellingenoverige} Overzicht van de tellingen in 2016 voor het meetnet Zadelsprinkhaan en het meetnet Lentevuurspin en de vooropgestelde doelen", missing = "nvt" )
+
+
+```
+
+\autoref{fig:figuurBezoekenoverige} toont de tijdstippen van de bezoeken voor Lentevuurspin en Zadelsprinkhaan. Alle bezoeken vallen binnen de afgesproken telperiode.
+
+```{r overzichtBezoekenoverige, message= FALSE, warning= FALSE, fig.width= 5, fig.height= 4, fig.cap = "\\label{fig:figuurBezoekenoverige} Overzicht tijdstippen waarop tellingen werden uitgevoerd in 2016" }
+
+bezoeken_overige <- filter(bezoeken, groep %in% "overige")
+
+ggplot(bezoeken_overige, aes(x = datum, fill = bezoek_status )) + geom_bar(binwidth = 7, colour= "white") + facet_wrap(~meetnet, scales = "free_x") + labs(x = "Datum bezoek", y = "Aantal bezoeken") + theme(legend.position = "bottom", axis.text.x = element_text(angle = 90)) + ylim(0,11)
+
+```
+
+
+## Ingevoerde gegevens
+
+### Zadelsprinkhaan
+
+```{r verkenningAantallenZadelsprinkhaan3, message=FALSE, warning= FALSE, fig.height= 2.5, fig.width= 6, fig.cap="\\label{fig:aantallenOverige} Overzicht getelde aantallen per bezoek voor Zadelsprinkhaan en Lentevuurspin"}
+
+
+figuur_aantallen(filter(aantallen_bezoek_relevant,soortgroep == "overige"))
+
+aantallen_Zadelsprinkhaan <- filter(aantallen,  meetnet =="Zadelsprinkhaan" )
+
+```
+
+\autoref{fig:figuurAantallenzadelsprinkhaan1} egeeft de evolutie van de getelde aantallen binnen het seizoen. Tellingen van eenzelfde locatie verbonden met een stippellijn.
+
+```{r figuurAantallenzadelsprinkhaan1, message=FALSE, warning= FALSE,fig.width= 3, fig.height= 3, fig.cap ="\\label{fig:figuurAantallenzadelsprinkhaan1} Aantal getelde zadelsprinkhanen per bezoek; tellingen op eenzelfde locatie worden verbonden met een stippellijn"  }
+
+ggplot(aantallen_Zadelsprinkhaan, aes(x = datum, y = aantal,  group = locatie)) + geom_point( size = 1, alpha = 0.8) + geom_line(colour = "black", linetype = 2, alpha = 0.3) + theme(legend.position = "bottom", axis.text.x = element_text(angle = 90, hjust = 1)) + labs(x = "Datum bezoek", y = "Aantal getelde exemplaren per bezoek")
+
+```
+
+## Wijziging monitoringprotocol
+
+* Wijziging veldprotocol Lentevuurspin:
++ De transecten worden op de meeste geschikte plaatsen gelegd binnen telgebied en moeten dus niet strikt parallel liggen op 10 meter van elkaar zoals het veldprotocol oorspronkelijk stelde
++ Het zoeken van nestjes gebeurt niet op 50 cm langs weerszijden van het transect, maar 1 m links of rechts van het transect afhankelijk welke kant het meest geschikt is op het moment van de telling.
+
+## Opstart nieuwe meetnetten in 2017
+
+In 2017 gaat het meetnet Schavertje van start en zal ook de inhaalslag voor Gerande oeverspin en Vliegend hert van start gaan.
+
+# Referenties
+
+* Luc De Bruyn, Jeroen Speybroeck, Dirk Maes, Geert De Knijf, Thierry Onkelinx, Frederic Piesschaert, Marc Pollet, Toon Westra & Paul Quataert (2015a). Monitoringsprotocol kikkers en padden. Rapporten van het Instituut voor Natuur- en Bosonderzoek 2015 (INBO.R.2015.11336466). Instituut voor Natuur- en Bosonderzoek, Brussel.
+
+* De Bruyn L, Speybroeck J, Maes D, De Knijf G, Onkelinx T, Piesschaert F, Pollet M, Truyens P, Van Calster H, Westra T, Quataert P (2015b). Monitoringsprotocol vuursalamander. Rapporten van het Instituut voor Natuur- en Bosonderzoek 2015 (INBO.R.2015.10186299). Instituut voor Natuur- en Bosonderzoek, Brussel.
+
+* Luc De Bruyn, Koen Van Den Berge, Goedele Verbeylen, Thomas Scheppers, Jan Gouwy, Dirk Maes, Geert De Knijf, Thierry Onkelinx, Frederic Piesschaert, Marc Pollet, Toon Westra & Paul Quataert (2017). Monitoringsprotocol zoogdieren: Europese hamster, hazelmuis, das en Europese otter. Rapporten van het Instituut voor Natuur- en Bosonderzoek 2017 (INBO.R.2015.11336560). Instituut voor Natuur- en Bosonderzoek, Brussel.
+
+* De Knijf G., Westra T., Onkelinx T., Quataert P. & M. Pollet (red.) (2014). Monitoring Natura 2000-soorten en overige soorten prioritair voor het Vlaams beleid. Blauwdrukken soortenmonitoring in Vlaanderen. Rapporten van het Instituut voor Natuur- en Bosonderzoek 2014 (INBO.R.2014.2319355). Instituut voor Natuur- en Bosonderzoek, Brussel.
+
+* De Knijf G., Maes D., Onkelinx T., De Bruyn L., Piesschaert F., Pollet M., Truyens P., Van Calster H., Westra T. & Quataert P. (2015). Monitoringsprotocol Libellen. Rapporten van het Instituut voor Natuur- en Bosonderzoek 2015 (INBO.R.2015.7886774). Instituut voor Natuur- en Bosonderzoek, Brussel.
+
+* De Knijf G., Adriaens T., De Bruyn L., Maes D., Onkelinx T., Piesschaert F., Pollet M., Westra T. & Quataert P. (2016). Monitoringsprotocol sprinkhanen. Rapporten van het Instituut voor Natuur- en Bosonderzoek 2016 (INBO.R.2015.10069987). Instituut voor Natuur- en Bosonderzoek, Brussel.
+
+* Maes D., De Bruyn L., De Knijf G., Onkelinx T., Piesschaert F., Pollet M., Truyens P., Van Calster H., Westra T. & Quataert P. (2015). Monitoringsprotocol vlinders. Rapporten van het Instituut voor Natuur- en Bosonderzoek 2015 (INBO.R.2015.7827697). Instituut voor Natuur- en Bosonderzoek, Brussel.
+
+* Van Landuyt W., Provoost S., Packet J., Maes D., De Bruyn L., De Knijf G., Onkelinx T., Piesschaert F., Pollet M., Van Calster H., Westra T. & Quataert P. (2015). Monitoringsprotocol vaatplanten. Rapporten van het Instituut voor Natuur- en Bosonderzoek 2015 (INBO.R.2015.10039812). Instituut voor Natuur- en Bosonderzoek, Brussel.
+
+* Van Keer K., De Knijf G., Lambeets K., Maes D., De Bruyn L., Onkelinx T., Piesschaert F., Pollet M., Westra T. en Quataert P. (2015). Monitoringprotocol spinnen. Rapporten van het Instituut voor Natuur- en Bosonderzoek 2015 (INBO.R.2015.10069665). Instituut voor Natuur- en Bosonderzoek, Brussel.
+
+
+# Bijlage Overzicht soorten
+
+```{r tabelSoorten, cache = FALSE}
+tabelSoorten <- read.csv2("Data/soortenlijst_2017.csv")
+levels(tabelSoorten$Soortgroep) <- gsub('ë', '"e', levels(tabelSoorten$Soortgroep))
+
+tabelSoorten %>%
+  rename("Type soort" = Type_soort) %>%
+  kable(format = "latex", booktabs = TRUE, longtable = TRUE, caption = "Overzicht van de soorten die gemonitord (zullen) worden via een meetnet. Deze lijst omvat soorten van  Bijlage II en IV van de Habitatrichtlijn (HRL) of de Vogelrichtlijn (VRL) (= de Europees Prioritaire soorten) en Vlaams prioritaire soorten (VPS). Voor een aantal soorten gebeurt de gegevensinzameling door professionele medewerkers van het INBO (PR). Voor sommige soorten  is er eerst meer kennis nodig over de verspreiding in Vlaanderen en daarvoor moet eerst een inhaalslag  (IHS) worden uitgevoerd") %>%
+ kable_styling(latex_options = c("repeat_header"), repeat_header_method = "replace", repeat_header_text = "vervolg", font_size = 8) 
+  
+  # column_spec( column = 1, width = "7em")   %>% 
+  # # column_spec(2, width = "12em") %>%
+  # column_spec(4, width = "8em") %>%
+  # collapse_rows( columns = 1) %>%
+  
+
+  
+
+```
